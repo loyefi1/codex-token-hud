@@ -1,0 +1,323 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Codex Token 统计</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --panel2: #1d212a; --line: #2a2f3a;
+    --text: #e6e8ee; --muted: #8b93a3; --accent: #6ea8fe;
+    --cached: #3d7bd6; --fresh: #7db4ff; --write: #c9a227; --out: #57d38c;
+    --bar: #232936;
+  }
+  @media (prefers-color-scheme: light) {
+    :root {
+      --bg: #f6f7fb; --panel: #ffffff; --panel2: #f0f2f8; --line: #e2e5ee;
+      --text: #1b1f27; --muted: #667085; --accent: #2563eb;
+      --cached: #93b4f5; --fresh: #2563eb; --write: #b7791f; --out: #17a673;
+      --bar: #e8ebf3;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.5 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif; }
+  header { padding: 20px 24px 8px; }
+  h1 { margin: 0 0 4px; font-size: 20px; }
+  .sub { color: var(--muted); font-size: 12px; }
+  main { padding: 12px 24px 48px; max-width: 1480px; margin: 0 auto; }
+  .cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin: 12px 0 16px; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; }
+  .card .k { color: var(--muted); font-size: 12px; }
+  .card .v { font-size: 20px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .card .s { color: var(--muted); font-size: 11px; margin-top: 2px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; margin-bottom: 14px; }
+  .panel h2 { margin: 0 0 10px; font-size: 14px; font-weight: 600; }
+  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+  input[type=search], select { background: var(--panel2); color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 7px 10px; font: inherit; outline: none; }
+  input[type=search] { min-width: 260px; flex: 1 1 260px; }
+  input[type=search]:focus, select:focus { border-color: var(--accent); }
+  .bar { display: flex; height: 14px; border-radius: 7px; overflow: hidden; background: var(--bar); }
+  .bar > span { display: block; height: 100%; }
+  .legend { display: flex; flex-wrap: wrap; gap: 14px; color: var(--muted); font-size: 12px; margin-top: 6px; }
+  .dot { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin-right: 5px; vertical-align: baseline; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; position: sticky; top: 0; background: var(--panel); z-index: 1; }
+  td.num, th.num { text-align: right; }
+  tr.sess { cursor: pointer; }
+  tr.sess:hover { background: var(--panel2); }
+  tr.sess.open { background: var(--panel2); }
+  .title { max-width: 380px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12px; }
+  .exp { display: none; background: var(--bg); }
+  .exp.open { display: table-row; }
+  .exp td { padding: 0; border-bottom: 1px solid var(--line); }
+  .exp-inner { padding: 10px 14px 16px; }
+  .exp-inner h3 { margin: 4px 0 8px; font-size: 13px; color: var(--muted); font-weight: 500; }
+  .exp-inner table { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  tr.turn { cursor: pointer; }
+  tr.turn:hover { background: var(--panel2); }
+  .reqwrap { display: none; padding: 8px 10px 12px; }
+  .reqwrap.open { display: block; }
+  .reqwrap table { background: var(--bg); }
+  .pill { display: inline-block; padding: 1px 7px; border-radius: 999px; background: var(--panel2); color: var(--muted); font-size: 11px; }
+  .empty { color: var(--muted); padding: 18px; text-align: center; }
+  a { color: var(--accent); text-decoration: none; }
+  .foot { color: var(--muted); font-size: 12px; margin-top: 8px; }
+  .mini { height: 8px; border-radius: 4px; overflow: hidden; display: inline-flex; width: 120px; background: var(--bar); vertical-align: middle; }
+  .mini > span { display: block; height: 100%; }
+  .scroll { overflow: auto; max-height: 70vh; }
+  @media (max-width: 720px) {
+    .title { max-width: 180px; }
+    th, td { padding: 7px 8px; }
+    main { padding: 8px 10px 32px; }
+    header { padding: 14px 12px 4px; }
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>Codex Token 统计</h1>
+  <div class="sub">
+    数据来源：<span id="src"></span>（本地只读解析） · 生成于 <span id="stamp"></span> · 双击 <b>更新统计.cmd</b> 刷新
+  </div>
+</header>
+<main>
+  <div class="cards" id="cards"></div>
+
+  <div class="panel">
+    <h2>Token 组成（当前筛选范围）</h2>
+    <div class="bar" id="globalbar"></div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <div class="panel">
+    <h2>会话</h2>
+    <div class="controls">
+      <input type="search" id="q" placeholder="搜索标题 / 工作目录 / 模型…">
+      <select id="model"><option value="">全部模型</option></select>
+      <select id="range">
+        <option value="0">全部时间</option>
+        <option value="7">最近 7 天</option>
+        <option value="30" selected>最近 30 天</option>
+        <option value="90">最近 90 天</option>
+      </select>
+      <span class="muted small" id="count"></span>
+    </div>
+    <div class="scroll">
+      <table>
+        <thead><tr>
+          <th>最后活动</th><th>会话</th><th>模型</th>
+          <th class="num">轮次</th><th class="num">请求</th>
+          <th class="num">输入</th><th class="num">缓存命中</th>
+          <th class="num">输出</th><th class="num">其中推理</th>
+          <th class="num">上下文峰值</th><th>组成</th>
+        </tr></thead>
+        <tbody id="sessions"></tbody>
+      </table>
+    </div>
+    <div class="foot" id="foot"></div>
+  </div>
+</main>
+<script id="data" type="application/json">__DATA__</script>
+<script>
+const DATA = JSON.parse(document.getElementById('data').textContent);
+document.getElementById('src').textContent = DATA.source;
+document.getElementById('stamp').textContent = new Date(DATA.generatedAt).toLocaleString('zh-CN', { hour12: false });
+
+const fmt = (n) => n >= 1e6 ? (n / 1e6).toFixed(2) + 'M' : n >= 1e4 ? (n / 1e3).toFixed(1) + 'k' : String(Math.round(n));
+const fmt0 = (n) => n.toLocaleString('zh-CN');
+const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const dstr = (ms) => ms ? new Date(ms).toLocaleString('zh-CN', { hour12: false, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+const dur = (a, b) => { if (!a || !b || b < a) return '—'; const s = Math.round((b - a) / 1000); return s < 60 ? s + 's' : Math.floor(s / 60) + 'm' + (s % 60) + 's'; };
+
+function turnTotals(t) {
+  const a = { requests: t.requests.length, input: 0, cached: 0, write: 0, output: 0, reasoning: 0, total: 0, peak: 0, window: 0 };
+  for (const r of t.requests) {
+    a.input += r.input; a.cached += r.cached; a.write += r.write;
+    a.output += r.output; a.reasoning += r.reasoning; a.total += r.total;
+    if (r.input > a.peak) a.peak = r.input;
+    if (r.ctx) a.window = r.ctx;
+  }
+  return a;
+}
+
+function sessTotals(s) {
+  const a = { turns: s.turns.length, requests: 0, input: 0, cached: 0, write: 0, output: 0, reasoning: 0, total: 0, peak: 0, window: 0 };
+  for (const t of s.turns) {
+    const x = turnTotals(t);
+    a.requests += x.requests;
+    a.input += x.input; a.cached += x.cached; a.write += x.write;
+    a.output += x.output; a.reasoning += x.reasoning; a.total += x.total;
+    if (x.peak > a.peak) a.peak = x.peak;
+    if (x.window) a.window = x.window;
+  }
+  return a;
+}
+
+const models = [...new Set(DATA.sessions.flatMap((s) => s.turns.map((t) => t.model).filter(Boolean)))].sort();
+const msel = document.getElementById('model');
+for (const m of models) { const o = document.createElement('option'); o.value = m; o.textContent = m; msel.appendChild(o); }
+
+const state = { q: '', model: '', range: 30 };
+
+function rangeCut() { return state.range ? Date.now() - state.range * 864e5 : 0; }
+
+function visible() {
+  const cut = rangeCut();
+  const q = state.q.trim().toLowerCase();
+  return DATA.sessions.filter((s) => {
+    if (cut && (s.lastAt || s.startedAt) < cut) return false;
+    if (state.model && !s.turns.some((t) => t.model === state.model)) return false;
+    if (q) {
+      const hay = [s.title, s.cwd, ...s.turns.map((t) => t.model)].join(' ').toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    return true;
+  });
+}
+
+function agg(list) {
+  const a = { sessions: list.length, turns: 0, requests: 0, input: 0, cached: 0, write: 0, output: 0, reasoning: 0 };
+  for (const s of list) {
+    const t = sessTotals(s);
+    a.turns += t.turns; a.requests += t.requests;
+    a.input += t.input; a.cached += t.cached; a.write += t.write;
+    a.output += t.output; a.reasoning += t.reasoning;
+  }
+  return a;
+}
+
+function compositionBar(a, height) {
+  const parts = [
+    ['--cached', a.cached, '缓存输入'],
+    ['--fresh', Math.max(0, a.input - a.cached), '新增输入'],
+    ['--write', a.write, '缓存写入'],
+    ['--out', a.output, '输出'],
+  ];
+  const sum = parts.reduce((x, p) => x + p[1], 0) || 1;
+  return parts.map(([c, v, label]) =>
+    `<span title="${label} ${fmt0(v)}" style="width:${(v / sum * 100).toFixed(2)}%;background:var(${c})"></span>`).join('');
+}
+
+function miniBar(t) {
+  const parts = [
+    [t.cached, 'var(--cached)'],
+    [Math.max(0, t.input - t.cached), 'var(--fresh)'],
+    [t.output, 'var(--out)'],
+  ];
+  const sum = parts.reduce((x, p) => x + p[0], 0) || 1;
+  return `<span class="mini">${parts.map(([v, c]) => `<span style="width:${(v / sum * 100).toFixed(2)}%;background:${c}"></span>`).join('')}</span>`;
+}
+
+document.getElementById('legend').innerHTML = [
+  ['--cached', '缓存输入'],
+  ['--fresh', '新增输入'],
+  ['--write', '缓存写入'],
+  ['--out', '输出'],
+].map(([c, l]) => `<span><i class="dot" style="background:var(${c})"></i>${l}</span>`).join('') + '<span>（输入含缓存；推理是输出的子集）</span>';
+
+function renderCards(a) {
+  const cards = [
+    ['会话', fmt0(a.sessions), ''],
+    ['轮次', fmt0(a.turns), ''],
+    ['模型请求', fmt0(a.requests), ''],
+    ['输入 tokens', fmt(a.input), '缓存命中 ' + pct(a.cached, a.input)],
+    ['输出 tokens', fmt(a.output), '其中推理 ' + pct(a.reasoning, a.output)],
+    ['总 tokens', fmt(a.input + a.output), '输入+输出'],
+  ];
+  document.getElementById('cards').innerHTML = cards.map(([k, v, s]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`).join('');
+}
+
+function turnsTable(s) {
+  const rows = s.turns.slice().reverse().map((t) => {
+    const x = turnTotals(t);
+    const reqs = t.requests.slice().reverse().map((r) => `<tr>
+      <td class="muted">${dstr(r.ts)}</td>
+      <td class="num">${fmt0(r.input)}</td>
+      <td class="num muted">${fmt0(r.cached)}</td>
+      <td class="num">${fmt0(Math.max(0, r.input - r.cached))}</td>
+      <td class="num">${fmt0(r.output)}</td>
+      <td class="num muted">${fmt0(r.reasoning)}</td>
+      <td class="num">${fmt0(r.total)}</td>
+      <td class="num muted">${r.ctx ? pct(r.input, r.ctx) : '—'}</td>
+    </tr>`).join('');
+    return `<tr class="turn">
+      <td class="muted nowrap">${dstr(t.start)}</td>
+      <td>${esc(t.model || '—')}${t.effort ? ` <span class="pill">${esc(t.effort)}</span>` : ''}</td>
+      <td class="num">${x.requests}</td>
+      <td class="num">${fmt(x.input)}</td>
+      <td class="num">${pct(x.cached, x.input)}</td>
+      <td class="num">${fmt(x.output)}</td>
+      <td class="num muted">${fmt(x.reasoning)}</td>
+      <td class="num">${fmt(x.peak)}</td>
+      <td class="num muted">${pct(x.peak, x.window)}</td>
+      <td class="num muted">${dur(t.start, t.end)}</td>
+    </tr>
+    <tr><td colspan="10" style="padding:0;border:none"><div class="reqwrap"><h3>请求明细（新 → 旧，共 ${t.requests.length} 条）</h3>
+      <table><thead><tr><th>时间</th><th class="num">输入</th><th class="num">其中缓存</th><th class="num">新增输入</th><th class="num">输出</th><th class="num">其中推理</th><th class="num">合计</th><th class="num">占上下文窗口</th></tr></thead><tbody>${reqs}</tbody></table>
+    </div></td></tr>`;
+  }).join('');
+  return `<h3>轮次（新 → 旧，共 ${s.turns.length} 轮）</h3>
+    <table><thead><tr><th>开始时间</th><th>模型</th><th class="num">请求数</th><th class="num">输入</th><th class="num">缓存命中</th><th class="num">输出</th><th class="num">其中推理</th><th class="num">上下文峰值</th><th class="num">窗口占比</th><th class="num">时长</th></tr></thead><tbody>${rows}</tbody></table>`;
+}
+
+function render() {
+  const list = visible();
+  const a = agg(list);
+  renderCards(a);
+  document.getElementById('globalbar').innerHTML = compositionBar(a);
+  document.getElementById('count').textContent = `显示 ${list.length} / ${DATA.sessions.length} 个会话`;
+
+  const tbody = document.getElementById('sessions');
+  if (!list.length) {
+    tbody.innerHTML = '<tr><td colspan="11" class="empty">没有符合筛选条件的会话</td></tr>';
+    document.getElementById('foot').textContent = '';
+    return;
+  }
+
+  const rows = [];
+  for (const s of list) {
+    const t = sessTotals(s);
+    const sid = 's_' + s.id.replace(/[^a-zA-Z0-9]/g, '_');
+    const models2 = [...new Set(s.turns.map((x) => x.model).filter(Boolean))].join(', ');
+    rows.push(`<tr class="sess" data-target="${sid}">
+      <td class="muted nowrap">${dstr(s.lastAt || s.startedAt)}</td>
+      <td class="title" title="${esc(s.title)}\n${esc(s.cwd)}">${esc(s.title)}<div class="muted small">${esc(s.cwd)}</div></td>
+      <td class="nowrap">${esc(models2)}</td>
+      <td class="num">${t.turns}</td><td class="num">${t.requests}</td>
+      <td class="num">${fmt(t.input)}</td><td class="num">${pct(t.cached, t.input)}</td>
+      <td class="num">${fmt(t.output)}</td><td class="num muted">${fmt(t.reasoning)}</td>
+      <td class="num">${fmt(t.peak)}${t.window ? `<div class="muted small">${pct(t.peak, t.window)} 窗口</div>` : ''}</td>
+      <td>${miniBar(t)}</td>
+    </tr>
+    <tr class="exp" id="${sid}"><td colspan="11"><div class="exp-inner">${turnsTable(s)}</div></td></tr>`);
+  }
+  tbody.innerHTML = rows.join('');
+  document.getElementById('foot').textContent = '点击会话行展开每个轮次；点击轮次行展开每条模型请求。';
+
+  tbody.querySelectorAll('tr.sess').forEach((tr) => {
+    tr.addEventListener('click', () => {
+      const exp = document.getElementById(tr.dataset.target);
+      exp.classList.toggle('open');
+      tr.classList.toggle('open');
+    });
+  });
+  tbody.querySelectorAll('tr.turn').forEach((tr) => {
+    tr.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const w = tr.nextElementSibling;
+      if (w && w.querySelector('.reqwrap')) w.querySelector('.reqwrap').classList.toggle('open');
+    });
+  });
+}
+
+document.getElementById('q').addEventListener('input', (e) => { state.q = e.target.value; render(); });
+msel.addEventListener('change', (e) => { state.model = e.target.value; render(); });
+document.getElementById('range').addEventListener('change', (e) => { state.range = Number(e.target.value); render(); });
+render();
+</script>
+</body>
+</html>

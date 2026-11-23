@@ -1,0 +1,8 @@
+dist/
+node_modules/
+*.log
+overlay.json
+overlay.pid
+src/dashboard/index.html
+.DS_Store
+Thumbs.db
