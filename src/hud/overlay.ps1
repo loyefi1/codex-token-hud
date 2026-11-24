@@ -314,8 +314,58 @@ public class Win32
 Add-Type -TypeDefinition $cs -ReferencedAssemblies System.Windows.Forms, System.Drawing, System
 try { [Win32]::SetProcessDPIAware() | Out-Null } catch {}
 
+$sqlCs = @'
+using System;
+using System.Runtime.InteropServices;
+
+public class SqliteLog
+{
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int sqlite3_open_v2(string filename, out IntPtr db, int flags, IntPtr vfs);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int sqlite3_prepare_v2(IntPtr db, byte[] sql, int nByte, out IntPtr stmt, IntPtr tail);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int sqlite3_step(IntPtr stmt);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr sqlite3_column_text(IntPtr stmt, int i);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern long sqlite3_column_int64(IntPtr stmt, int i);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int sqlite3_finalize(IntPtr stmt);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int sqlite3_close(IntPtr db);
+
+    public static string LatestResumeThread(string path, out long ts)
+    {
+        ts = 0;
+        IntPtr db;
+        if (sqlite3_open_v2(path, out db, 1, IntPtr.Zero) != 0) return null;
+        try
+        {
+            string sql = "SELECT thread_id, ts FROM logs WHERE thread_id IS NOT NULL AND feedback_log_body LIKE '%thread/resume%' ORDER BY id DESC LIMIT 1";
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(sql + "\0");
+            IntPtr stmt;
+            if (sqlite3_prepare_v2(db, bytes, bytes.Length, out stmt, IntPtr.Zero) != 0) return null;
+            try
+            {
+                if (sqlite3_step(stmt) == 100)
+                {
+                    IntPtr p = sqlite3_column_text(stmt, 0);
+                    if (p != IntPtr.Zero) ts = sqlite3_column_int64(stmt, 1);
+                    if (p != IntPtr.Zero) return Marshal.PtrToStringAnsi(p);
+                }
+            }
+            finally { sqlite3_finalize(stmt); }
+        }
+        finally { sqlite3_close(db); }
+        return null;
+    }
+}
+'@
+try { Add-Type -TypeDefinition $sqlCs } catch {}
+
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = '1.0.1'
+$script:Version = '1.0.3'
 $pidFile = Join-Path $here 'overlay.pid'
 $settingsFile = Join-Path $here 'overlay.json'
 $logFile = Join-Path $here 'overlay.log'
@@ -414,6 +464,20 @@ function Fmt-Tok([double]$n) {
     if ($n -ge 1e6) { return ('{0:0.0}M' -f ($n / 1e6)) }
     if ($n -ge 1e4) { return ('{0:0.0}k' -f ($n / 1e3)) }
     return ('{0:N0}' -f $n)
+}
+
+function Get-ActiveThreadIdFromLogs {
+    $db = Join-Path $env:USERPROFILE '.codex\logs_2.sqlite'
+    if (-not (Test-Path -LiteralPath $db)) { return $null }
+    try {
+        $ts = [long]0
+        $tid = [SqliteLog]::LatestResumeThread($db, [ref]$ts)
+        if ($tid) {
+            $age = [DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $ts
+            return [pscustomobject]@{ id = [string]$tid; age = $age }
+        }
+    } catch {}
+    return $null
 }
 
 function Get-ActiveThreadId {
@@ -772,12 +836,25 @@ function Update-Hud {
     if (-not $show) { return }
 
     $id = $null
+    $source = ''
     if (-not $script:menuOpen) {
-        try { $id = Get-ActiveThreadIdByTitle } catch {}
-        if ($id) { $script:lastId = $id }
+        $logHit = $null
+        try { $logHit = Get-ActiveThreadIdFromLogs } catch {}
+        if ($logHit -and $logHit.age -le 120) {
+            $id = $logHit.id
+            $source = 'logs'
+        }
     }
-    if (-not $id -and $script:lastId) { $id = $script:lastId }
-    if (-not $id) { try { $id = Get-ActiveThreadId } catch {} }
+    if (-not $id -and -not $script:menuOpen) {
+        try { $id = Get-ActiveThreadIdByTitle } catch {}
+        if ($id) { $source = 'ocr' }
+    }
+    if (-not $id -and $script:lastId) { $id = $script:lastId; $source = 'last' }
+    if (-not $id) {
+        try { $id = Get-ActiveThreadId } catch {}
+        $source = 'state'
+    }
+    if ($id) { $script:lastId = $id }
     $f = $null
     if ($id -and $id -ne 'draft') { $f = Get-SessionFile $id }
     if (-not $f) { $f = Get-LatestSession }
@@ -809,7 +886,7 @@ function Update-Hud {
         $form.Pct = $s.Ctx
     }
     if ($script:lastLogKey -ne ($id + '|' + $f.FullName)) {
-        Log ('id=' + $id + ' file=' + $f.Name)
+        Log ('id=' + $id + ' source=' + $source + ' file=' + $f.Name)
         $script:lastLogKey = $id + '|' + $f.FullName
     }
     $form.Render()

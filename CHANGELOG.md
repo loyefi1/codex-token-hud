@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.0.3
+
+- Prefer a `thread/resume` entry from the last two minutes as the active thread; OCR of the chat header is used when no fresh resume exists.
+- Fixes wrong model/stats right after switching conversations, especially when the header shows a workspace path.
+
+## 1.0.2
+
+- Read the active thread id from the Codex app-server log database (`logs_2.sqlite`, `thread/resume` events) through the system `winsqlite3.dll`.
+- Thread resolution order is now: OCR title match → recent `thread/resume` log entry → last known thread → UI state file.
+- Fixes the HUD keeping the previous model when the chat header shows a workspace path instead of a thread title.
+
 ## 1.0.1
 
 - Launch the HUD through a detached VBScript launcher (`wscript.exe launch.vbs`) so closing any PowerShell/console window no longer terminates the widget.

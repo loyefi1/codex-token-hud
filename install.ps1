@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = '1.0.1'
+$version = '1.0.3'
 
 function Resolve-Source([string]$relative, [string]$probe) {
     $path = Join-Path $root $relative
