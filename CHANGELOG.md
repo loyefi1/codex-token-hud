@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.0.1
+
+- Launch the HUD through a detached VBScript launcher (`wscript.exe launch.vbs`) so closing any PowerShell/console window no longer terminates the widget.
+- Auto start now uses the same detached launcher.
+- Added `src/hud/launch.vbs`; installer and release package include it.
+
 ## 1.0.0
 
 - Floating always-on-top HUD for the ChatGPT / Codex desktop app.

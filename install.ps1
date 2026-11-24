@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = '1.0.0'
+$version = '1.0.1'
 
 function Resolve-Source([string]$relative, [string]$probe) {
     $path = Join-Path $root $relative
@@ -39,6 +39,7 @@ New-Item -ItemType Directory -Force -Path $InstallDir | Out-Null
 
 Copy-Item -LiteralPath (Join-Path $srcHud 'overlay.ps1') -Destination $InstallDir -Force
 Copy-Item -LiteralPath (Join-Path $srcHud 'start.cmd') -Destination $InstallDir -Force
+Copy-Item -LiteralPath (Join-Path $srcHud 'launch.vbs') -Destination $InstallDir -Force
 Copy-Item -LiteralPath (Join-Path $srcHud 'stop.cmd') -Destination $InstallDir -Force
 Copy-Item -LiteralPath (Join-Path $srcDash 'build.mjs') -Destination $InstallDir -Force
 Copy-Item -LiteralPath (Join-Path $srcDash 'template.html') -Destination $InstallDir -Force
@@ -104,8 +105,7 @@ if ($DesktopShortcut) {
 # auto start with Windows (launches together with the ChatGPT / Codex app)
 $runKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Run'
 if (-not $NoStartup) {
-    $cmd = 'powershell.exe -NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File "' +
-        (Join-Path $InstallDir 'overlay.ps1') + '" -AutoStart'
+    $cmd = 'wscript.exe "' + (Join-Path $InstallDir 'launch.vbs') + '"'
     Set-ItemProperty -Path $runKey -Name 'CodexHud' -Value $cmd
     Write-Host 'Auto start: enabled' -ForegroundColor Green
 } else {
@@ -120,9 +120,8 @@ if (-not (Test-Path "$env:USERPROFILE\.codex")) {
 }
 
 if (-not $NoLaunch) {
-    Start-Process -FilePath "$env:SystemRoot\System32\WindowsPowerShell\v1.0\powershell.exe" `
-        -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-WindowStyle', 'Hidden',
-            '-File', ('"' + (Join-Path $InstallDir 'overlay.ps1') + '"')) `
+    Start-Process -FilePath "$env:SystemRoot\System32\wscript.exe" `
+        -ArgumentList @('//nologo', ('"' + (Join-Path $InstallDir 'launch.vbs') + '"')) `
         -WindowStyle Hidden
     Write-Host 'HUD started (it appears when the ChatGPT/Codex window is in the foreground).' -ForegroundColor Green
 }

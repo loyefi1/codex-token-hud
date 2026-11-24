@@ -22,6 +22,7 @@ Copy-Item -LiteralPath (Join-Path $root 'LICENSE') -Destination $stage
 
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\overlay.ps1') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\start.cmd') -Destination $stage
+Copy-Item -LiteralPath (Join-Path $root 'src\hud\launch.vbs') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\stop.cmd') -Destination $stage
 
 Copy-Item -LiteralPath (Join-Path $root 'src\dashboard\build.mjs') -Destination $stage

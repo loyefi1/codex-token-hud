@@ -315,7 +315,7 @@ Add-Type -TypeDefinition $cs -ReferencedAssemblies System.Windows.Forms, System.
 try { [Win32]::SetProcessDPIAware() | Out-Null } catch {}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = '1.0.0'
+$script:Version = '1.0.1'
 $pidFile = Join-Path $here 'overlay.pid'
 $settingsFile = Join-Path $here 'overlay.json'
 $logFile = Join-Path $here 'overlay.log'
