@@ -17,6 +17,9 @@ A tiny always-on-top token usage overlay for the **ChatGPT / Codex desktop app o
 - **Draggable and pinnable** — drag anywhere, right-click for the menu, `固定位置` locks the position.
 - **Starts and stops with the app** — an `HKCU\...\Run` entry starts it at login; it exits when ChatGPT/Codex exits.
 - **Detached from consoles** — `start.cmd` launches it through `launch.vbs` / `wscript.exe`, so closing any PowerShell or console window does not terminate the widget.
+- **Hover cost breakdown** — hover the bar and a small panel appears below it with per-model token usage and estimated cost, including conversations that switched models mid-session. Prices are read from `prices.json` (USD per 1M tokens, editable).
+- **Size presets** — right-click → 窗口大小 (85% / 100% / 115% / 130%) scales both the bar and the cost panel; the choice is saved.
+- **Survives app restarts** — when ChatGPT/Codex exits the HUD hides but keeps running, so it reappears as soon as the app is started again; the logon entry starts it with Windows.
 - **Offline dashboard** — `update.cmd` parses local session logs and generates a self-contained `index.html`: per session, per turn and per request input/output/cache tokens, cache hit rate, context window usage and throughput.
 
 ## Requirements

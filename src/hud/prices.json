@@ -1,0 +1,17 @@
+﻿{
+  "currency": "$",
+  "note": "Sample USD prices per 1M tokens. Edit to match your provider.",
+  "default": { "input": 1.0, "cached": 0.1, "output": 4.0 },
+  "models": {
+    "gpt-5.5": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-5.6-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6.1-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6-luna": { "input": 0.25, "cached": 0.025, "output": 2.0 },
+    "gpt-6-Astra": { "input": 2.5, "cached": 0.25, "output": 15.0 },
+    "gpt-6-astra": { "input": 2.5, "cached": 0.25, "output": 15.0 },
+    "ccs-dp/cc/deepseek-v4.1-flash": { "input": 0.28, "cached": 0.028, "output": 0.42 },
+    "ccs-dp/cc/deepseek-flash": { "input": 0.28, "cached": 0.028, "output": 0.42 },
+    "ccs-dp/qwen3.8-flash": { "input": 0.15, "cached": 0.015, "output": 0.6 }
+  }
+}

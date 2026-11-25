@@ -1,5 +1,6 @@
 ﻿# Codex 置顶叠窗（透明背景，跟随对话 / 前台显示 / 开机自启）
-param([switch]$AutoStart, [switch]$NoFollow, [switch]$ForceShow)
+param([switch]$AutoStart, [switch]$NoFollow, [switch]$ForceShow, [switch]$CostTest)
+if ($env:CODEX_HUD_FORCE_SHOW -eq '1') { $ForceShow = $true }
 
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -8,6 +9,7 @@ $ErrorActionPreference = 'Stop'
 
 $cs = @'
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
@@ -24,6 +26,7 @@ public class CodexHud : Form
     public double Pct = 0;
     public bool FixedPos = false;
     public bool Veil = true;
+    public double UiScale = 1.0;
 
     private Font fModel = new Font("Segoe UI", 18f, FontStyle.Bold, GraphicsUnit.Pixel);
     private Font fText = new Font("Segoe UI", 18f, FontStyle.Regular, GraphicsUnit.Pixel);
@@ -55,6 +58,21 @@ public class CodexHud : Form
         SetStyle(ControlStyles.Opaque, true);
     }
 
+    public void SetScale(double s)
+    {
+        if (s < 0.7) s = 0.7;
+        if (s > 1.7) s = 1.7;
+        UiScale = s;
+        if (fModel != null) fModel.Dispose();
+        if (fText != null) fText.Dispose();
+        if (fSmall != null) fSmall.Dispose();
+        fModel = new Font("Segoe UI", (float)(18.0 * s), FontStyle.Bold, GraphicsUnit.Pixel);
+        fText = new Font("Segoe UI", (float)(18.0 * s), FontStyle.Regular, GraphicsUnit.Pixel);
+        fSmall = new Font("Segoe UI", (float)(14.0 * s), FontStyle.Regular, GraphicsUnit.Pixel);
+        Height = (int)Math.Round(46.0 * s);
+        Render();
+    }
+
     protected override CreateParams CreateParams
     {
         get
@@ -67,7 +85,28 @@ public class CodexHud : Form
         }
     }
 
+    protected override void WndProc(ref Message m)
+    {
+        if (m.Msg == 0x0084) { m.Result = (IntPtr)1; return; }
+        base.WndProc(ref m);
+    }
+
     protected override void OnPaintBackground(PaintEventArgs e) { }
+
+    public event EventHandler HoverEnter;
+    public event EventHandler HoverLeave;
+
+    protected override void OnMouseEnter(EventArgs e)
+    {
+        base.OnMouseEnter(e);
+        if (HoverEnter != null) HoverEnter(this, e);
+    }
+
+    protected override void OnMouseLeave(EventArgs e)
+    {
+        base.OnMouseLeave(e);
+        if (HoverLeave != null) HoverLeave(this, e);
+    }
     protected override void OnPaint(PaintEventArgs e) { }
 
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Render(); }
@@ -309,6 +348,189 @@ public class Win32
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
     [DllImport("user32.dll")] public static extern bool PrintWindow(IntPtr hWnd, IntPtr hdc, uint flags);
 }
+
+public class CostPopup : Form
+{
+    private string _title = "";
+    private string[] _rows = new string[0];
+    private string _foot = "";
+    private int _fullW = 320;
+    private int _fullH = 100;
+    private double _anim = 1.0;
+    private double _scale = 1.0;
+
+    private Font _fText = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
+
+    private Color cText = Color.FromArgb(238, 241, 248);
+    private Color cMuted = Color.FromArgb(196, 205, 220);
+    private Color cFaint = Color.FromArgb(150, 160, 180);
+    private Color cAccent = Color.FromArgb(110, 168, 254);
+
+    [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
+    [StructLayout(LayoutKind.Sequential)] private struct SIZE { public int cx, cy; }
+    [StructLayout(LayoutKind.Sequential, Pack = 1)] private struct BLENDFUNCTION { public byte BlendOp, BlendFlags, SourceConstantAlpha, AlphaFormat; }
+
+    [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr hWnd);
+    [DllImport("user32.dll")] private static extern int ReleaseDC(IntPtr hWnd, IntPtr hDC);
+    [DllImport("gdi32.dll")] private static extern IntPtr CreateCompatibleDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern bool DeleteDC(IntPtr hdc);
+    [DllImport("gdi32.dll")] private static extern IntPtr SelectObject(IntPtr hdc, IntPtr obj);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+
+    public CostPopup()
+    {
+        FormBorderStyle = FormBorderStyle.None;
+        ShowInTaskbar = false;
+        TopMost = true;
+        StartPosition = FormStartPosition.Manual;
+        SetStyle(ControlStyles.Opaque, true);
+        Width = 10;
+        Height = 10;
+    }
+
+    public void SetScale(double s)
+    {
+        if (s < 0.7) s = 0.7;
+        if (s > 1.7) s = 1.7;
+        _scale = s;
+        if (_fText != null) _fText.Dispose();
+        _fText = new Font("Segoe UI", (float)(16.0 * s), FontStyle.Bold, GraphicsUnit.Pixel);
+        SetContent(_title, _rows, _foot);
+    }
+
+    protected override bool ShowWithoutActivation { get { return true; } }
+
+    protected override CreateParams CreateParams
+    {
+        get
+        {
+            CreateParams cp = base.CreateParams;
+            cp.ExStyle |= 0x00080000;
+            cp.ExStyle |= 0x08000000;
+            cp.ExStyle |= 0x00000080;
+            return cp;
+        }
+    }
+
+    private static GraphicsPath Rounded(Rectangle r, int radius)
+    {
+        GraphicsPath p = new GraphicsPath();
+        int d = radius * 2;
+        p.AddArc(r.X, r.Y, d, d, 180, 90);
+        p.AddArc(r.Right - d, r.Y, d, d, 270, 90);
+        p.AddArc(r.Right - d, r.Bottom - d, d, d, 0, 90);
+        p.AddArc(r.X, r.Bottom - d, d, d, 90, 90);
+        p.CloseFigure();
+        return p;
+    }
+
+    public void SetContent(string title, string[] rows, string foot)
+    {
+        _title = title;
+        _rows = rows;
+        _foot = foot;
+        List<string> lines = new List<string>();
+        if (rows.Length == 1) lines.Add(title + "   ·   " + rows[0]);
+        else
+        {
+            lines.Add(title);
+            foreach (string r in rows) lines.Add(r);
+        }
+        int w = 0;
+        int h = 12;
+        foreach (string line in lines)
+        {
+            Size s = TextRenderer.MeasureText(line, _fText);
+            if (s.Width > w) w = s.Width;
+            h += s.Height + 5;
+        }
+        w += 110;
+        h += 10;
+        if (w < 360) w = 360;
+        _fullW = w;
+        _fullH = h;
+        Render();
+    }
+
+    public void SetAnim(double t)
+    {
+        _anim = Math.Max(0.02, Math.Min(1.0, t));
+        Render();
+    }
+
+    private void Render()
+    {
+        int w = _fullW;
+        int fullH = _fullH;
+        int h = Math.Max(2, (int)Math.Round(fullH * _anim));
+        using (Bitmap bmp = new Bitmap(w, h))
+        {
+            using (Graphics g = Graphics.FromImage(bmp))
+            {
+                g.SmoothingMode = SmoothingMode.AntiAlias;
+                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+                g.Clear(Color.Transparent);
+
+                using (GraphicsPath path = Rounded(new Rectangle(0, 0, w, fullH), fullH / 2))
+                using (SolidBrush bg = new SolidBrush(Color.FromArgb(150, 16, 19, 26)))
+                using (Pen border = new Pen(Color.FromArgb(70, 90, 102, 124)))
+                {
+                    g.FillPath(bg, path);
+                    g.DrawPath(border, path);
+                }
+
+                List<string> lines = new List<string>();
+                if (_rows.Length == 1) lines.Add(_title + "   ·   " + _rows[0]);
+                else
+                {
+                    lines.Add(_title);
+                    foreach (string r in _rows) lines.Add(r);
+                }
+                int y = 12;
+                bool dot = true;
+                foreach (string line in lines)
+                {
+                    if (dot)
+                    {
+                        using (SolidBrush db = new SolidBrush(cAccent)) g.FillEllipse(db, 24, y + 5, 7, 7);
+                        dot = false;
+                    }
+                    TextRenderer.DrawText(g, line, _fText, new Point(40, y), cText);
+                    y += TextRenderer.MeasureText(line, _fText).Height + 5;
+                }
+            }
+            Push(bmp);
+        }
+    }
+
+    private void Push(Bitmap bmp)
+    {
+        IntPtr screenDc = GetDC(IntPtr.Zero);
+        IntPtr memDc = CreateCompatibleDC(screenDc);
+        IntPtr hBmp = IntPtr.Zero;
+        IntPtr oldBmp = IntPtr.Zero;
+        try
+        {
+            hBmp = bmp.GetHbitmap(Color.FromArgb(0));
+            oldBmp = SelectObject(memDc, hBmp);
+            POINT ptDst = new POINT { X = Left, Y = Top };
+            SIZE size = new SIZE { cx = bmp.Width, cy = bmp.Height };
+            POINT ptSrc = new POINT { X = 0, Y = 0 };
+            byte alpha = (byte)Math.Max(20, Math.Min(255, (int)(255 * (0.35 + 0.65 * _anim))));
+            BLENDFUNCTION bf = new BLENDFUNCTION { BlendOp = 0, BlendFlags = 0, SourceConstantAlpha = alpha, AlphaFormat = 1 };
+            UpdateLayeredWindow(Handle, screenDc, ref ptDst, ref size, memDc, ref ptSrc, 0, ref bf, 2);
+        }
+        finally
+        {
+            if (oldBmp != IntPtr.Zero) SelectObject(memDc, oldBmp);
+            if (hBmp != IntPtr.Zero) DeleteObject(hBmp);
+            DeleteDC(memDc);
+            ReleaseDC(IntPtr.Zero, screenDc);
+        }
+    }
+}
 '@
 
 Add-Type -TypeDefinition $cs -ReferencedAssemblies System.Windows.Forms, System.Drawing, System
@@ -360,12 +582,36 @@ public class SqliteLog
         finally { sqlite3_close(db); }
         return null;
     }
+
+    public static string ThreadModel(string path, string threadId)
+    {
+        IntPtr db;
+        if (sqlite3_open_v2(path, out db, 1, IntPtr.Zero) != 0) return null;
+        try
+        {
+            string sql = "SELECT model FROM threads WHERE id = '" + threadId.Replace("'", "''") + "' LIMIT 1";
+            byte[] bytes = System.Text.Encoding.UTF8.GetBytes(sql + "\0");
+            IntPtr stmt;
+            if (sqlite3_prepare_v2(db, bytes, bytes.Length, out stmt, IntPtr.Zero) != 0) return null;
+            try
+            {
+                if (sqlite3_step(stmt) == 100)
+                {
+                    IntPtr p = sqlite3_column_text(stmt, 0);
+                    if (p != IntPtr.Zero) return Marshal.PtrToStringAnsi(p);
+                }
+            }
+            finally { sqlite3_finalize(stmt); }
+        }
+        finally { sqlite3_close(db); }
+        return null;
+    }
 }
 '@
 try { Add-Type -TypeDefinition $sqlCs } catch {}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = '1.0.3'
+$script:Version = '1.2.0'
 $pidFile = Join-Path $here 'overlay.pid'
 $settingsFile = Join-Path $here 'overlay.json'
 $logFile = Join-Path $here 'overlay.log'
@@ -385,7 +631,7 @@ if (Test-Path -LiteralPath $logFile) {
 
 Set-Content -LiteralPath $pidFile -Value $PID -Encoding ASCII
 
-$settings = @{ x = $null; y = $null; fixed = $false; follow = $false; startup = $true; veil = $true }
+$settings = @{ x = $null; y = $null; fixed = $false; follow = $false; startup = $true; veil = $true; scale = 1.0 }
 if (Test-Path -LiteralPath $settingsFile) {
     try {
         $loaded = Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -395,6 +641,9 @@ if (Test-Path -LiteralPath $settingsFile) {
         if ($null -ne $loaded.follow) { $settings.follow = [bool]$loaded.follow }
         if ($null -ne $loaded.startup) { $settings.startup = [bool]$loaded.startup }
         if ($null -ne $loaded.veil) { $settings.veil = [bool]$loaded.veil }
+        if ($null -ne $loaded.scale) { $settings.scale = [double]$loaded.scale }
+        if ($settings.scale -lt 0.7) { $settings.scale = 0.7 }
+        if ($settings.scale -gt 1.7) { $settings.scale = 1.7 }
     } catch {}
 }
 
@@ -406,19 +655,209 @@ function Save-Settings {
             follow = [bool]$miFollow.Checked
             startup = [bool]$miStartup.Checked
             veil = [bool]$miVeil.Checked
+            scale = [double]$settings.scale
         }
         $obj | ConvertTo-Json -Compress | Set-Content -LiteralPath $settingsFile -Encoding UTF8
     } catch {}
 }
 
+function Apply-Scale([double]$s) {
+    $settings.scale = $s
+    $form.SetScale($s)
+    if ($script:popup) { $script:popup.SetScale($s) }
+    if ($script:sizeItems) {
+        foreach ($it in $script:sizeItems) {
+            $it.Checked = ([Math]::Abs([double]$it.Tag - $s) -lt 0.01)
+        }
+    }
+    Save-Settings
+}
+
+$script:priceFile = Join-Path $here 'prices.json'
+if (-not (Test-Path -LiteralPath $script:priceFile)) {
+    $defaultPrices = @'
+{
+  "currency": "$",
+  "note": "Sample USD prices per 1M tokens. Edit to match your provider.",
+  "default": { "input": 1.0, "cached": 0.1, "output": 4.0 },
+  "models": {
+    "gpt-5.5": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-5.6-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6.1-sol": { "input": 1.25, "cached": 0.125, "output": 10.0 },
+    "gpt-6-luna": { "input": 0.25, "cached": 0.025, "output": 2.0 },
+    "gpt-6-Astra": { "input": 2.5, "cached": 0.25, "output": 15.0 },
+    "gpt-6-astra": { "input": 2.5, "cached": 0.25, "output": 15.0 },
+    "ccs-dp/cc/deepseek-v4.1-flash": { "input": 0.28, "cached": 0.028, "output": 0.42 },
+    "ccs-dp/cc/deepseek-flash": { "input": 0.28, "cached": 0.028, "output": 0.42 },
+    "ccs-dp/qwen3.8-flash": { "input": 0.15, "cached": 0.015, "output": 0.6 }
+  }
+}
+'@
+    try { [IO.File]::WriteAllText($script:priceFile, $defaultPrices, (New-Object Text.UTF8Encoding($true))) } catch {}
+}
+
+$script:priceTable = $null
+$script:usageCacheKey = ''
+$script:usageCache = $null
+$script:rxModel = [regex]'"model":"([^"]+)"'
+$script:rxIn = [regex]'"input_tokens":(\d+)'
+$script:rxCached = [regex]'"cached_input_tokens":(\d+)'
+$script:rxCacheWrite = [regex]'"cache_write_input_tokens":(\d+)'
+$script:rxOut = [regex]'"output_tokens":(\d+)'
+
+function Get-PriceTable {
+    if ($script:priceTable) { return $script:priceTable }
+    try {
+        $script:priceTable = Get-Content -LiteralPath $script:priceFile -Raw -Encoding UTF8 | ConvertFrom-Json
+    } catch {
+        $script:priceTable = [pscustomobject]@{
+            currency = '$'
+            default = [pscustomobject]@{ input = 1.0; cached = 0.1; output = 4.0 }
+            models = [pscustomobject]@{}
+        }
+    }
+    return $script:priceTable
+}
+
+function Get-PriceFor([string]$model) {
+    $pt = Get-PriceTable
+    $entry = $null
+    if ($pt.models) {
+        foreach ($p in $pt.models.PSObject.Properties) {
+            if ($p.Name -eq $model) { $entry = $p.Value; break }
+        }
+        if (-not $entry) {
+            foreach ($p in $pt.models.PSObject.Properties) {
+                if ($model -like ('*' + $p.Name + '*') -or $p.Name -like ('*' + $model + '*')) { $entry = $p.Value; break }
+            }
+        }
+    }
+    if (-not $entry) { $entry = $pt.default }
+    return $entry
+}
+
+function Get-UsageCost($u, $price) {
+    $inp = [double]$u.input
+    $cached = [double]$u.cached
+    if ($cached -gt $inp) { $cached = $inp }
+    $uncached = [double]$u.cache_write + [Math]::Max(0.0, $inp - $cached)
+    return ($uncached * [double]$price.input + $cached * [double]$price.cached + [double]$u.output * [double]$price.output) / 1000000.0
+}
+
+function Read-ModelUsage([string]$file) {
+    if (-not $file -or -not (Test-Path -LiteralPath $file)) { return @{} }
+    $fi = Get-Item -LiteralPath $file
+    $key = $file + '|' + $fi.Length + '|' + $fi.LastWriteTimeUtc.Ticks
+    if ($script:usageCacheKey -eq $key -and $script:usageCache) { return $script:usageCache }
+
+    $map = @{}
+    $cur = ''
+    try { $fs = [IO.File]::Open($file, 'Open', 'Read', 'ReadWrite') } catch { return $map }
+    $rd = New-Object System.IO.StreamReader($fs, [Text.Encoding]::UTF8)
+    try {
+        while ($null -ne ($line = $rd.ReadLine())) {
+            if ($line.Contains('"turn_context"')) {
+                $m = $script:rxModel.Match($line)
+                if ($m.Success) { $cur = $m.Groups[1].Value }
+            } elseif ($line.Contains('"token_usage_record"')) {
+                $mi = $script:rxIn.Match($line)
+                if (-not $mi.Success) { continue }
+                $mc = $script:rxCached.Match($line)
+                $mw = $script:rxCacheWrite.Match($line)
+                $mo = $script:rxOut.Match($line)
+                $model = if ($cur) { $cur } else { 'unknown' }
+                if (-not $map.ContainsKey($model)) {
+                    $map[$model] = [pscustomobject]@{ model = $model; input = [long]0; cached = [long]0; cache_write = [long]0; output = [long]0 }
+                }
+                $map[$model].input += [long]$mi.Groups[1].Value
+                if ($mc.Success) { $map[$model].cached += [long]$mc.Groups[1].Value }
+                if ($mw.Success) { $map[$model].cache_write += [long]$mw.Groups[1].Value }
+                if ($mo.Success) { $map[$model].output += [long]$mo.Groups[1].Value }
+            }
+        }
+    } finally { $rd.Dispose() }
+
+    $script:usageCacheKey = $key
+    $script:usageCache = $map
+    return $map
+}
+
+function Update-CostPopup {
+    if (-not $script:activeFile) { return }
+    $map = Read-ModelUsage $script:activeFile
+    $pt = Get-PriceTable
+    $cur = [string]$pt.currency
+    if (-not $cur) { $cur = '$' }
+    $total = 0.0
+    $rows = New-Object System.Collections.ArrayList
+    $vals = @($map.Values)
+    if ($vals.Count -eq 0) {
+        [void]$rows.Add('暂无用量记录')
+        $script:popup.SetContent('费用 0.0000', [string[]]$rows.ToArray(), '')
+        return
+    }
+    $sorted = $vals | Sort-Object -Property @{ Expression = { [double]$_.input + [double]$_.output }; Descending = $true }
+    foreach ($u in $sorted) {
+        $total += Get-UsageCost $u (Get-PriceFor $u.model)
+    }
+    $title = ('费用 {0}{1:N4}' -f $cur, $total)
+    if ($vals.Count -eq 1) {
+        $u = $vals[0]
+        $name = [string]$u.model
+        if ($name.Length -gt 34) { $name = $name.Substring(0, 33) + '~' }
+        [void]$rows.Add(('{0}   {1} in · {2} out' -f $name, (Fmt-Tok $u.input), (Fmt-Tok $u.output)))
+    } else {
+        foreach ($u in $sorted) {
+            $cost = Get-UsageCost $u (Get-PriceFor $u.model)
+            $name = [string]$u.model
+            if ($name.Length -gt 30) { $name = $name.Substring(0, 29) + '~' }
+            [void]$rows.Add(('{0}   {1} in · {2} out   {3}{4:N4}' -f $name, (Fmt-Tok $u.input), (Fmt-Tok $u.output), $cur, $cost))
+        }
+    }
+    $script:popup.SetContent($title, [string[]]$rows.ToArray(), '')
+}
+
+function Show-CostPopup {
+    if ($script:menuOpen) { return }
+    if (-not $script:popup -or -not $script:activeFile) { return }
+    try { Update-CostPopup } catch { Log ('cost-err ' + $_.Exception.Message); return }
+    $x = $form.Left
+    $y = $form.Top + $form.Height + 6
+    $script:popup.Left = $x
+    $script:popup.Top = $y
+    if (-not $script:popup.Visible) {
+        $script:popup.SetAnim(0.02)
+        $script:popup.Show()
+        $script:animStep = 0
+        $animTimer.Start()
+    } else {
+        $script:popup.SetAnim(1.0)
+    }
+    try { [void][Win32]::SetWindowPos($script:popup.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) } catch {}
+}
+
+function Hide-CostPopup {
+    try {
+        if ($animTimer) { $animTimer.Stop() }
+        if ($script:popup -and $script:popup.Visible) { $script:popup.Hide() }
+    } catch {}
+}
+
 $form = New-Object CodexHud
+$popup = New-Object CostPopup
+$script:popup = $popup
+$script:popupHover = $false
+$script:activeFile = ''
 $form.FixedPos = $settings.fixed
 $form.Veil = $settings.veil
+$form.SetScale($settings.scale)
+$popup.SetScale($settings.scale)
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $script:menuOpen = $false
 $script:sawChat = $false
-$menu.Add_Opened({ $script:menuOpen = $true })
+$menu.Add_Opened({ $script:menuOpen = $true; Hide-CostPopup })
 $menu.Add_Closed({ $script:menuOpen = $false })
 $miFixed = New-Object System.Windows.Forms.ToolStripMenuItem '固定位置'
 $miFixed.CheckOnClick = $true
@@ -435,6 +874,24 @@ $miStartup.Checked = $true
 $miRefresh = New-Object System.Windows.Forms.ToolStripMenuItem '立即刷新'
 $miDashboard = New-Object System.Windows.Forms.ToolStripMenuItem '打开统计看板'
 $miExit = New-Object System.Windows.Forms.ToolStripMenuItem '退出'
+$miSize = New-Object System.Windows.Forms.ToolStripMenuItem '窗口大小'
+$script:sizeItems = @()
+$sizeChoices = @(
+    @{ Name = '小'; Value = 0.85 },
+    @{ Name = '标准'; Value = 1.0 },
+    @{ Name = '大'; Value = 1.15 },
+    @{ Name = '特大'; Value = 1.3 }
+)
+foreach ($pair in $sizeChoices) {
+    $si = New-Object System.Windows.Forms.ToolStripMenuItem $pair.Name
+    $si.Tag = [double]$pair.Value
+    $si.Checked = ([Math]::Abs($settings.scale - [double]$pair.Value) -lt 0.01)
+    $si.Add_Click({ Apply-Scale ([double]$this.Tag) })
+    $miSize.DropDownItems.Add($si) | Out-Null
+    $script:sizeItems += $si
+}
+$menu.Items.Add($miSize) | Out-Null
+$menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $menu.Items.Add($miFixed) | Out-Null
 $menu.Items.Add($miFollow) | Out-Null
 $menu.Items.Add($miVeil) | Out-Null
@@ -478,6 +935,14 @@ function Get-ActiveThreadIdFromLogs {
         }
     } catch {}
     return $null
+}
+
+function Get-ThreadModel([string]$id) {
+    if (-not $id -or $id -eq 'draft') { return '' }
+    if ($id -notmatch '^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$') { return '' }
+    $db = Join-Path $env:USERPROFILE '.codex\state_5.sqlite'
+    if (-not (Test-Path -LiteralPath $db)) { return '' }
+    try { return [string]([SqliteLog]::ThreadModel($db, $id)) } catch { return '' }
 }
 
 function Get-ActiveThreadId {
@@ -527,7 +992,7 @@ function Get-LatestSession {
         Select-Object -First 1
 }
 
-function Read-Stats([string]$file) {
+function Read-Stats([string]$file, [string]$modelFallback = '') {
     if (-not $file) { return $null }
     $len = (Get-Item -LiteralPath $file).Length
     $read = [int][Math]::Min(1048576, $len)
@@ -607,6 +1072,7 @@ function Read-Stats([string]$file) {
         } catch {}
     }
 
+    if (-not $model -and $modelFallback) { $model = $modelFallback }
     if (-not $model) { $model = 'Codex' }
 
     return [pscustomobject]@{
@@ -817,12 +1283,8 @@ function Update-Hud {
     if ($state -ne $script:lastState) { Log ('state=' + $state); $script:lastState = $state }
 
     if ($state -eq 'none') {
-        if ($script:sawChat) {
-            if ($timer) { $timer.Stop() }
-            $form.Close()
-        } else {
-            if ($form.Visible) { $form.Hide() }
-        }
+        Hide-CostPopup
+        if ($form.Visible) { $form.Hide() }
         return
     }
 
@@ -858,6 +1320,7 @@ function Update-Hud {
     $f = $null
     if ($id -and $id -ne 'draft') { $f = Get-SessionFile $id }
     if (-not $f) { $f = Get-LatestSession }
+    $script:activeFile = if ($f) { $f.FullName } else { '' }
 
     if (-not $f) {
         $form.Model = '等待消息'
@@ -870,7 +1333,13 @@ function Update-Hud {
     }
 
     $s = $null
-    try { $s = Read-Stats $f.FullName } catch { $s = $null }
+    $dbModel = ''
+    if ($id -and $id -ne 'draft') { try { $dbModel = Get-ThreadModel $id } catch {} }
+    try { $s = Read-Stats $f.FullName $dbModel } catch { $s = $null }
+    if ($s -and $script:lastStatsLog -ne $id) {
+        Log ('model=' + $s.Model + ' total=' + $s.Total)
+        $script:lastStatsLog = $id
+    }
 
     if ($null -eq $s) {
         $form.Model = 'Codex'
@@ -890,6 +1359,7 @@ function Update-Hud {
         $script:lastLogKey = $id + '|' + $f.FullName
     }
     $form.Render()
+    if ($script:popup.Visible) { try { Show-CostPopup } catch {} }
 
     if ($miFollow.Checked -and -not $miFixed.Checked) { Move-Follow }
 }
@@ -917,10 +1387,40 @@ $miDashboard.Add_Click({
 })
 $miExit.Add_Click({
     $timer.Stop()
+    Hide-CostPopup
+    $script:popup.Close()
     Save-Settings
     $form.Close()
 })
 $form.Add_LocationChanged({ if ($miFixed.Checked) { Save-Settings } })
+
+$script:popupHover = $false
+$script:animStep = 0
+$animTimer = New-Object System.Windows.Forms.Timer
+$animTimer.Interval = 15
+$animTimer.Add_Tick({
+    $script:animStep++
+    $t = [Math]::Min(1.0, $script:animStep / 12.0)
+    $e = 1.0 - [Math]::Pow(1.0 - $t, 3)
+    try { $script:popup.SetAnim($e) } catch {}
+    if ($t -ge 1.0) { $animTimer.Stop() }
+})
+$hideCostTimer = New-Object System.Windows.Forms.Timer
+$hideCostTimer.Interval = 300
+$hideCostTimer.Add_Tick({
+    $hideCostTimer.Stop()
+    try {
+        $p = [System.Windows.Forms.Cursor]::Position
+        if ($script:popupHover -or $script:popup.Bounds.Contains($p)) { return }
+        Hide-CostPopup
+    } catch {}
+})
+$form.add_HoverEnter({ $hideCostTimer.Stop(); Show-CostPopup })
+$form.add_HoverLeave({ $hideCostTimer.Stop(); $hideCostTimer.Start() })
+$popup.Add_MouseEnter({ $script:popupHover = $true; $hideCostTimer.Stop() })
+$popup.Add_MouseLeave({ $script:popupHover = $false; $hideCostTimer.Stop(); $hideCostTimer.Start() })
+$form.Add_MouseDown({ Hide-CostPopup })
+$form.Add_VisibleChanged({ if (-not $form.Visible) { Hide-CostPopup } })
 
 $timer = New-Object System.Windows.Forms.Timer
 $timer.Interval = 2000
@@ -937,8 +1437,21 @@ $form.Add_Shown({
 # 等 ChatGPT 出现；不存在时保持隐藏
 $context = New-Object System.Windows.Forms.ApplicationContext
 $form.Add_Closed({ $context.ExitThread() })
-Log ('start v' + $script:Version)
+Log ('start v' + $script:Version + ' force=' + $ForceShow)
 Update-Hud
+
+if ($CostTest) {
+    Write-Output ('scale=' + $settings.scale + ' height=' + $form.Height)
+    $f = Get-LatestSession
+    if ($f) {
+        $map = Read-ModelUsage $f.FullName
+        foreach ($u in $map.Values) {
+            $pr = Get-PriceFor $u.model
+            Write-Output ('{0} in={1} cached={2} out={3} cost={4:N4}' -f $u.model, $u.input, $u.cached, $u.output, (Get-UsageCost $u $pr))
+        }
+    }
+    exit
+}
 
 [System.Windows.Forms.Application]::Run($context)
 

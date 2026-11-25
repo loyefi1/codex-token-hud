@@ -1,5 +1,24 @@
 # Changelog
 
+## 1.2.0
+
+- Window size presets (小 85% / 标准 100% / 大 115% / 特大 130%) for the bar and the cost popup, persisted in `overlay.json`.
+- The HUD now stays running hidden when ChatGPT exits, so it reappears immediately when ChatGPT is started again (no logoff/logon needed).
+- Mouse hover cost popup in a capsule-shaped, translucent, bold single-line layout.
+- Falls back to `threads.model` in `state_5.sqlite` when the session tail has no `turn_context`.
+- Detached VBS launcher so closing PowerShell does not stop the HUD.
+
+## 1.1.0
+
+- Hover the bar to show a cost popup below it.
+- Per-model token usage and estimated cost, including conversations that switched models mid-session.
+- Prices are read from `prices.json` next to `overlay.ps1` (USD per 1M tokens, editable).
+
+## 1.0.4
+
+- Fall back to the `threads.model` column in `state_5.sqlite` when the session tail has no `turn_context` record.
+- Fixes the model showing as `Codex` on long conversations (the last 1 MB often contains only token records).
+
 ## 1.0.3
 
 - Prefer a `thread/resume` entry from the last two minutes as the active thread; OCR of the chat header is used when no fresh resume exists.

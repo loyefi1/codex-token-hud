@@ -24,6 +24,9 @@ Copy-Item -LiteralPath (Join-Path $root 'src\hud\overlay.ps1') -Destination $sta
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\start.cmd') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\launch.vbs') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\hud\stop.cmd') -Destination $stage
+if (Test-Path -LiteralPath (Join-Path $root 'src\hud\prices.json')) {
+    Copy-Item -LiteralPath (Join-Path $root 'src\hud\prices.json') -Destination $stage
+}
 
 Copy-Item -LiteralPath (Join-Path $root 'src\dashboard\build.mjs') -Destination $stage
 Copy-Item -LiteralPath (Join-Path $root 'src\dashboard\template.html') -Destination $stage
