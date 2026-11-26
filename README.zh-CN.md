@@ -15,9 +15,8 @@
 - **透明 / 半透明**：逐像素 alpha 的分层窗口，默认带一层半透明底（可关），文字始终可读。
 - **宽度自适应**：按文字实测宽度自动伸缩，`ccs-dp/cc/deepseek-v4.1-flash` 这种长模型名不会溢出。
 - **可拖动、可固定**：整条都能拖，右键任意位置出菜单，「固定位置」后锁定。
-- **随应用启停**：写入 `HKCU\...\Run`，登录时随 ChatGPT 一起启动；ChatGPT 退出后自动退出。
 - **与 PowerShell 窗口解耦**：`start.cmd` 通过 `launch.vbs` / `wscript.exe` 启动，关闭任何 PowerShell 或命令行窗口都不会结束悬浮条。
-- **悬停费用明细**：鼠标放到悬浮条上，下方会弹出一个小面板，按模型列出 token 用量和估算费用；中途切过模型的会话会分行显示。单价来自 `prices.json`（美元/百万 token，可自行修改）。
+- **CC Switch 会话费用**：悬停可查看本次会话各模型的请求数和已记录美元费用。此功能只读本机 `%USERPROFILE%\.cc-switch\cc-switch.db`。点击速度、Token 或上下文可查看详情，点击卡片外即可收起。
 - **窗口大小预设**：右键 →「窗口大小」（85% / 100% / 115% / 130%），同时缩放悬浮条和费用小窗，选择会保存。
 - **应用重启后自动恢复**：ChatGPT/Codex 退出后 HUD 只隐藏不退出，应用再次启动时立刻重新显示；登录时由开机启动项拉起。
 - **离线看板**：`update.cmd` 解析本地会话日志，生成自包含的 `index.html`，按会话 / 轮次 / 请求展示输入、输出、缓存命中、上下文窗口占比和速度。
@@ -60,7 +59,7 @@ powershell -ExecutionPolicy Bypass -File .\install.ps1
 | 打开统计看板 | 打开 HTML 统计页 |
 | 退出 | 关闭悬浮条 |
 
-ChatGPT/Codex 不在前台时状态条自动隐藏；ChatGPT 退出时它自动退出，下次登录再随应用启动。
+ChatGPT/Codex 不在前台时状态条自动隐藏；ChatGPT 退出后继续在后台等待，再次打开应用时恢复显示。
 
 看板：运行 `%LOCALAPPDATA%\CodexTokenHUD\update.cmd`，或右键状态条选「打开统计看板」。
 

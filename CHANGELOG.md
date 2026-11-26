@@ -1,5 +1,40 @@
 # Changelog
 
+## 1.4.0
+
+- Hover to view CC Switch charges per model for the current conversation.
+- Click the session, token and context indicators to inspect usage. Click outside to dismiss.
+- Faster conversation detection and cached session statistics.
+
+## 1.3.4
+
+- Info popup is always anchored to the bar's left edge, so it appears in the same place for every click.
+- Clicking the same segment again closes the popup.
+
+## 1.3.3
+
+- Info popup's left edge now aligns with the clicked segment.
+- The popup follows the bar while dragging, and dragging no longer re-renders every mouse move (removes stutter).
+- Transparent mode keeps a 1/255 background on the bar and popup so the whole area stays clickable and draggable, and text uses grayscale anti-aliasing to remove ghosting.
+
+## 1.3.2
+
+- Use Segoe UI Variable Text Semibold (the Windows 11 system UI font used by Codex) for the popup, with Segoe UI Bold fallback.
+
+## 1.3.1
+
+- Fix the context panel using cumulative input tokens; it now uses the last request's input tokens, matching the ring percentage.
+
+## 1.3.0
+
+- Click 速度 / 缓存命中 / 上下文 segments to open session stats, token usage and context breakdown panels.
+- Transparent (no-veil) mode now draws black text and keeps the same full-width hit area as the opaque bar.
+
+## 1.2.1
+
+- Reload `session_index.jsonl` as soon as it changes instead of caching for 60 seconds, so a new plain conversation binds immediately.
+- When the header title cannot be matched, fall back to the most recently written session file (within 90 seconds).
+
 ## 1.2.0
 
 - Window size presets (小 85% / 标准 100% / 大 115% / 特大 130%) for the bar and the cost popup, persisted in `overlay.json`.

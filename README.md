@@ -15,9 +15,8 @@ A tiny always-on-top token usage overlay for the **ChatGPT / Codex desktop app o
 - **Transparent / translucent** — per-pixel alpha layered window; toggle a translucent background for readability.
 - **Auto width** — the bar measures the text and resizes itself, so long model names such as `ccs-dp/cc/deepseek-v4.1-flash` never overflow.
 - **Draggable and pinnable** — drag anywhere, right-click for the menu, `固定位置` locks the position.
-- **Starts and stops with the app** — an `HKCU\...\Run` entry starts it at login; it exits when ChatGPT/Codex exits.
 - **Detached from consoles** — `start.cmd` launches it through `launch.vbs` / `wscript.exe`, so closing any PowerShell or console window does not terminate the widget.
-- **Hover cost breakdown** — hover the bar and a small panel appears below it with per-model token usage and estimated cost, including conversations that switched models mid-session. Prices are read from `prices.json` (USD per 1M tokens, editable).
+- **Session costs from CC Switch** — Hover to see the recorded USD amount and request count for each model in the current conversation. This optional feature reads `%USERPROFILE%\.cc-switch\cc-switch.db` locally. Click speed, tokens, or context for details. Click outside the card to dismiss it.
 - **Size presets** — right-click → 窗口大小 (85% / 100% / 115% / 130%) scales both the bar and the cost panel; the choice is saved.
 - **Survives app restarts** — when ChatGPT/Codex exits the HUD hides but keeps running, so it reappears as soon as the app is started again; the logon entry starts it with Windows.
 - **Offline dashboard** — `update.cmd` parses local session logs and generates a self-contained `index.html`: per session, per turn and per request input/output/cache tokens, cache hit rate, context window usage and throughput.
@@ -62,7 +61,7 @@ Right-click the bar for:
 | 打开统计看板 | Open the HTML token dashboard |
 | 退出 | Quit the HUD |
 
-The bar auto-hides when ChatGPT/Codex is not the foreground window and quits when the app exits. The next Windows login starts it again with the app.
+The bar auto-hides when ChatGPT/Codex is not the foreground window and stays available when the app exits. The next Windows login starts it again with the app.
 
 Dashboard: run `%LOCALAPPDATA%\CodexTokenHUD\update.cmd`, or use the HUD menu item.
 

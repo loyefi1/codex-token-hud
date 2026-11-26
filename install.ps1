@@ -1,4 +1,4 @@
-﻿# Codex Token HUD installer
+# Codex Token HUD installer
 [CmdletBinding()]
 param(
     [string]$InstallDir = (Join-Path $env:LOCALAPPDATA 'CodexTokenHUD'),
@@ -10,7 +10,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $MyInvocation.MyCommand.Path
-$version = '1.2.0'
+$version = '1.4.0'
 
 function Resolve-Source([string]$relative, [string]$probe) {
     $path = Join-Path $root $relative

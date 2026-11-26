@@ -27,23 +27,25 @@ public class CodexHud : Form
     public bool FixedPos = false;
     public bool Veil = true;
     public double UiScale = 1.0;
+    public Rectangle RSpeed, RCache, RContext;
+    public string ClickedSegment = "";
+    public int ClickedX = 0;
+    public event EventHandler SegmentClick;
 
     private Font fModel = new Font("Segoe UI", 18f, FontStyle.Bold, GraphicsUnit.Pixel);
     private Font fText = new Font("Segoe UI", 18f, FontStyle.Regular, GraphicsUnit.Pixel);
     private Font fSmall = new Font("Segoe UI", 14f, FontStyle.Regular, GraphicsUnit.Pixel);
     private StringFormat sf = StringFormat.GenericTypographic;
 
-    private Color cText = Color.FromArgb(238, 241, 248);
-    private Color cMuted = Color.FromArgb(196, 205, 220);
-    private Color cAccent = Color.FromArgb(110, 168, 254);
-    private Color cGreen = Color.FromArgb(87, 211, 140);
-    private Color cFaint = Color.FromArgb(150, 160, 180);
+    private Color cAccent = Color.FromArgb(97, 124, 183);
     private Color cShadow = Color.FromArgb(170, 0, 0, 0);
 
     private bool dragging = false;
     private Point dragStart;
     private Point locStart;
     private bool resizing = false;
+    private Point pressPos;
+    private bool moved = false;
 
     public CodexHud()
     {
@@ -66,10 +68,10 @@ public class CodexHud : Form
         if (fModel != null) fModel.Dispose();
         if (fText != null) fText.Dispose();
         if (fSmall != null) fSmall.Dispose();
-        fModel = new Font("Segoe UI", (float)(18.0 * s), FontStyle.Bold, GraphicsUnit.Pixel);
-        fText = new Font("Segoe UI", (float)(18.0 * s), FontStyle.Regular, GraphicsUnit.Pixel);
+        fModel = new Font("Segoe UI", (float)(15.0 * s), FontStyle.Bold, GraphicsUnit.Pixel);
+        fText = new Font("Segoe UI", (float)(15.0 * s), FontStyle.Regular, GraphicsUnit.Pixel);
         fSmall = new Font("Segoe UI", (float)(14.0 * s), FontStyle.Regular, GraphicsUnit.Pixel);
-        Height = (int)Math.Round(46.0 * s);
+        Height = (int)Math.Round(34.0 * s);
         Render();
     }
 
@@ -112,10 +114,21 @@ public class CodexHud : Form
     protected override void OnHandleCreated(EventArgs e) { base.OnHandleCreated(e); Render(); }
     protected override void OnResize(EventArgs e) { base.OnResize(e); if (!resizing) Render(); }
     protected override void OnVisibleChanged(EventArgs e) { base.OnVisibleChanged(e); if (Visible) Render(); }
-    protected override void OnLocationChanged(EventArgs e) { base.OnLocationChanged(e); if (IsHandleCreated) Render(); }
+    protected override void OnLocationChanged(EventArgs e)
+    {
+        base.OnLocationChanged(e);
+        if (!IsHandleCreated) return;
+        if (dragging) return;
+        Render();
+    }
 
     protected override void OnMouseDown(MouseEventArgs e)
     {
+        if (e.Button == MouseButtons.Left)
+        {
+            pressPos = e.Location;
+            moved = false;
+        }
         if (e.Button == MouseButtons.Left && !FixedPos)
         {
             dragging = true;
@@ -128,6 +141,12 @@ public class CodexHud : Form
 
     protected override void OnMouseMove(MouseEventArgs e)
     {
+        if (Math.Abs(e.X - pressPos.X) > 4 || Math.Abs(e.Y - pressPos.Y) > 4) moved = true;
+        if (!dragging)
+        {
+            bool hit = RSpeed.Contains(e.Location) || RCache.Contains(e.Location) || RContext.Contains(e.Location);
+            Cursor = hit ? Cursors.Hand : Cursors.Default;
+        }
         if (dragging)
         {
             Point cur = Cursor.Position;
@@ -147,6 +166,15 @@ public class CodexHud : Form
         {
             ContextMenuStrip.Show(Cursor.Position);
         }
+        if (e.Button == MouseButtons.Left && !moved)
+        {
+            ClickedSegment = "";
+            if (RSpeed.Contains(e.Location)) { ClickedSegment = "speed"; ClickedX = e.X; }
+            else if (RCache.Contains(e.Location)) { ClickedSegment = "cache"; ClickedX = e.X; }
+            else if (RContext.Contains(e.Location)) { ClickedSegment = "ctx"; ClickedX = e.X; }
+            if (ClickedSegment != "" && SegmentClick != null) SegmentClick(this, EventArgs.Empty);
+        }
+        if (moved && !dragging && IsHandleCreated) Render();
         base.OnMouseUp(e);
     }
 
@@ -205,7 +233,7 @@ public class CodexHud : Form
                 x += TW(g, Tokens, fText) + 10 + TW(g, "·", fText) + 10 + TW(g, Cache, fText) + 12 + 13;
             string pctText = Pct > 0 ? ((int)Math.Round(Pct)).ToString() + "%" : "—";
             x += 18 + 7 + TW(g, pctText, fText);
-            x += 14 + TW(g, "Codex", fSmall) + 12;
+            x += 14;
             int w = (int)Math.Ceiling(x);
             if (w < 240) w = 240;
             if (w > 1800) w = 1800;
@@ -215,21 +243,24 @@ public class CodexHud : Form
 
     private void DrawContent(Graphics g)
     {
-        if (Veil)
+        Color tText = Color.FromArgb(49, 52, 57);
+        Color tMuted = Color.FromArgb(89, 94, 101);
+        
+        Color tGreen = tMuted;
+        cShadow = Color.Transparent;
+
+        using (GraphicsPath path = Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Height / 2f))
+        using (SolidBrush bg = new SolidBrush(Veil ? Color.FromArgb(242, 247, 248, 249) : Color.FromArgb(1, 0, 0, 0)))
+        using (Pen border = new Pen(Veil ? Color.FromArgb(170, 215, 218, 222) : Color.FromArgb(1, 0, 0, 0)))
         {
-            using (GraphicsPath path = Rounded(new Rectangle(0, 0, Width - 1, Height - 1), Height / 2f))
-            using (SolidBrush bg = new SolidBrush(Color.FromArgb(128, 16, 19, 26)))
-            using (Pen border = new Pen(Color.FromArgb(80, 90, 102, 124)))
-            {
-                g.FillPath(bg, path);
-                g.DrawPath(border, path);
-            }
+            g.FillPath(bg, path);
+            g.DrawPath(border, path);
         }
 
         int cy = Height / 2;
         int x = 10;
 
-        using (Pen grip = new Pen(Color.FromArgb(120, 205, 214, 228), 1.5f))
+        using (Pen grip = new Pen(Veil ? Color.FromArgb(120, 205, 214, 228) : Color.FromArgb(140, 40, 40, 45), 1.5f))
         {
             g.DrawLine(grip, x, cy - 4, x + 8, cy - 4);
             g.DrawLine(grip, x, cy, x + 8, cy);
@@ -240,23 +271,28 @@ public class CodexHud : Form
         using (SolidBrush dot = new SolidBrush(cAccent)) g.FillEllipse(dot, x, cy - 4, 8, 8);
         x += 16;
 
-        x = Draw(g, Model, fModel, x, cy, cText) + 12;
+        x = Draw(g, Model, fModel, x, cy, tText) + 12;
         x = Sep(g, x, cy) + 12;
 
+        int rs = x;
         if (!string.IsNullOrEmpty(Speed))
         {
-            x = Draw(g, Speed, fText, x, cy, cMuted) + 12;
+            x = Draw(g, Speed, fText, x, cy, tMuted) + 12;
             x = Sep(g, x, cy) + 12;
         }
+        RSpeed = new Rectangle(rs, 0, Math.Max(1, x - rs), Height);
 
+        int rc = x;
         if (!string.IsNullOrEmpty(Tokens))
         {
-            x = Draw(g, Tokens, fText, x, cy, cText) + 10;
-            x = Draw(g, "·", fText, x, cy, cMuted) + 10;
-            x = Draw(g, Cache, fText, x, cy, cGreen) + 12;
+            x = Draw(g, Tokens, fText, x, cy, tText) + 10;
+            x = Draw(g, "·", fText, x, cy, tMuted) + 10;
+            x = Draw(g, Cache, fText, x, cy, tGreen) + 12;
             x = Sep(g, x, cy) + 12;
         }
+        RCache = new Rectangle(rc, 0, Math.Max(1, x - rc), Height);
 
+        int rx = x;
         int d = 18;
         Rectangle ring = new Rectangle(x, cy - d / 2, d, d);
         using (Pen track = new Pen(Color.FromArgb(120, 130, 150), 2.5f)) g.DrawEllipse(track, ring);
@@ -273,9 +309,10 @@ public class CodexHud : Form
         x += d + 7;
         string pctText = Pct > 0 ? ((int)Math.Round(Pct)).ToString() + "%" : "—";
         x = Draw(g, pctText, fText, x, cy, cAccent);
+        RContext = new Rectangle(rx, 0, Math.Max(1, x - rx + 8), Height);
 
-        SizeF tag = g.MeasureString("Codex", fSmall);
-        Draw(g, "Codex", fSmall, Width - (int)tag.Width - 12, cy, cFaint);
+        
+        
     }
 
     private int Draw(Graphics g, string s, Font f, int x, int cy, Color c)
@@ -354,17 +391,20 @@ public class CostPopup : Form
     private string _title = "";
     private string[] _rows = new string[0];
     private string _foot = "";
+    private string _rawTitle = "";
+    private string[] _rawRows = new string[0];
+    private string _kind = "default";
+    private string _headerValue = "";
+    private double _progress = -1.0;
     private int _fullW = 320;
     private int _fullH = 100;
     private double _anim = 1.0;
     private double _scale = 1.0;
+    public bool DarkText = false;
 
-    private Font _fText = new Font("Segoe UI", 16f, FontStyle.Bold, GraphicsUnit.Pixel);
+    private Font _fText = MakeFont(16f);
 
-    private Color cText = Color.FromArgb(238, 241, 248);
-    private Color cMuted = Color.FromArgb(196, 205, 220);
-    private Color cFaint = Color.FromArgb(150, 160, 180);
-    private Color cAccent = Color.FromArgb(110, 168, 254);
+    private Color cAccent = Color.FromArgb(97, 124, 183);
 
     [StructLayout(LayoutKind.Sequential)] private struct POINT { public int X, Y; }
     [StructLayout(LayoutKind.Sequential)] private struct SIZE { public int cx, cy; }
@@ -378,6 +418,59 @@ public class CostPopup : Form
     [DllImport("gdi32.dll")] private static extern bool DeleteObject(IntPtr obj);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool UpdateLayeredWindow(IntPtr hwnd, IntPtr hdcDst, ref POINT pptDst, ref SIZE psize, IntPtr hdcSrc, ref POINT pptSrc, int crKey, ref BLENDFUNCTION pblend, int dwFlags);
+
+    private static Font MakeFont(float px)
+    {
+        Font f = null;
+        try { f = new Font("Segoe UI Variable Text Semibold", px, FontStyle.Regular, GraphicsUnit.Pixel); } catch {}
+        if (f == null || f.Name != "Segoe UI Variable Text Semibold")
+        {
+            if (f != null) f.Dispose();
+            f = new Font("Segoe UI", px, FontStyle.Bold, GraphicsUnit.Pixel);
+        }
+        return f;
+    }
+
+    // Receive mouse button events only while the card is open. Windows still
+    // delivers the original click to the control under the pointer.
+    [StructLayout(LayoutKind.Sequential)] private struct RawDevice {
+        public ushort Page, Usage;
+        public uint Flags;
+        public IntPtr Target;
+    }
+    [DllImport("user32.dll")] private static extern bool RegisterRawInputDevices(RawDevice[] devices, uint count, uint size);
+    [DllImport("user32.dll")] private static extern uint GetRawInputData(IntPtr input, uint command, IntPtr data, ref uint size, uint headerSize);
+    [DllImport("user32.dll")] private static extern int GetMessagePos();
+    public CodexHud Hud;
+    public event EventHandler OutsidePress;
+    protected override void OnVisibleChanged(EventArgs e) {
+        base.OnVisibleChanged(e);
+        RawDevice device = new RawDevice { Page = 1, Usage = 2, Flags = Visible ? 0x100u : 1u, Target = Visible ? Handle : IntPtr.Zero };
+        RegisterRawInputDevices(new RawDevice[] { device }, 1, (uint)Marshal.SizeOf(typeof(RawDevice)));
+    }
+    protected override void WndProc(ref Message m) {
+        if (m.Msg == 0xff && Visible && OutsidePress != null) {
+            uint header = (uint)(8 + 2 * IntPtr.Size);
+            uint size = header + 24;
+            IntPtr data = Marshal.AllocHGlobal((int)size);
+            try {
+                if (GetRawInputData(m.LParam, 0x10000003, data, ref size, header) == header + 24 && Marshal.ReadInt32(data) == 0) {
+                    int buttons = Marshal.ReadInt16(data, (int)header + 4);
+                    if ((buttons & 0x155) != 0) {
+                        int pos = GetMessagePos();
+                        Point pt = new Point((short)pos, (short)(pos >> 16));
+                        bool segment = false;
+                        if (Hud != null && Hud.Bounds.Contains(pt) && (buttons & 1) != 0) {
+                            Point local = Hud.PointToClient(pt);
+                            Rectangle speed = Hud.RSpeed, cache = Hud.RCache, context = Hud.RContext; segment = speed.Contains(local) || cache.Contains(local) || context.Contains(local);
+                        }
+                        if (!Bounds.Contains(pt) && !segment) OutsidePress(this, EventArgs.Empty);
+                    }
+                }
+            } finally { Marshal.FreeHGlobal(data); }
+        }
+        base.WndProc(ref m);
+    }
 
     public CostPopup()
     {
@@ -396,8 +489,8 @@ public class CostPopup : Form
         if (s > 1.7) s = 1.7;
         _scale = s;
         if (_fText != null) _fText.Dispose();
-        _fText = new Font("Segoe UI", (float)(16.0 * s), FontStyle.Bold, GraphicsUnit.Pixel);
-        SetContent(_title, _rows, _foot);
+        _fText = MakeFont((float)(16.0 * s));
+        SetContent(_rawTitle, _rawRows, _foot);
     }
 
     protected override bool ShowWithoutActivation { get { return true; } }
@@ -414,6 +507,10 @@ public class CostPopup : Form
         }
     }
 
+    private static void FillRound(Graphics g, Brush brush, Rectangle r, int radius)
+    {
+        using (GraphicsPath p = Rounded(r, radius)) g.FillPath(brush, p);
+    }
     private static GraphicsPath Rounded(Rectangle r, int radius)
     {
         GraphicsPath p = new GraphicsPath();
@@ -428,32 +525,45 @@ public class CostPopup : Form
 
     public void SetContent(string title, string[] rows, string foot)
     {
-        _title = title;
-        _rows = rows;
-        _foot = foot;
-        List<string> lines = new List<string>();
-        if (rows.Length == 1) lines.Add(title + "   ·   " + rows[0]);
+        _rawTitle = _title = title ?? "";
+        _rawRows = _rows = rows ?? new string[0];
+        _foot = foot ?? "";
+        _kind = "default";
+        _headerValue = "";
+        _progress = -1.0;
+
+        if (_title.StartsWith("ctx|"))
+        {
+            _kind = "context";
+            string[] hp = _title.Split(new [] { '|' }, 3);
+            _title = hp.Length > 1 ? hp[1] : "上下文已用";
+            _headerValue = hp.Length > 2 ? hp[2] : "";
+            if (_rows.Length > 0)
+            {
+                string[] pp = _rows[0].Split(new [] { '|' }, 3);
+                if (pp.Length > 1) double.TryParse(pp[1], out _progress);
+                if (pp.Length > 2 && String.IsNullOrEmpty(_headerValue)) _headerValue = pp[2];
+                string[] rest = new string[Math.Max(0, _rows.Length - 1)];
+                for (int i = 1; i < _rows.Length; i++) rest[i - 1] = _rows[i];
+                _rows = rest;
+            }
+        }
         else
         {
-            lines.Add(title);
-            foreach (string r in rows) lines.Add(r);
+            string[] hp = _title.Split(new [] { '|' }, 2);
+            if (hp.Length == 2) { _title = hp[0]; _headerValue = hp[1]; }
         }
-        int w = 0;
-        int h = 12;
-        foreach (string line in lines)
-        {
-            Size s = TextRenderer.MeasureText(line, _fText);
-            if (s.Width > w) w = s.Width;
-            h += s.Height + 5;
-        }
-        w += 110;
-        h += 10;
-        if (w < 360) w = 360;
-        _fullW = w;
-        _fullH = h;
+
+        int rowHeight = (int)Math.Round(34.0 * _scale);
+        int top = (int)Math.Round(62.0 * _scale);
+        int bottom = (int)Math.Round(18.0 * _scale);
+        int width = (int)Math.Round((_kind == "context" ? 440.0 : 454.0) * _scale);
+        _fullW = width;
+        _fullH = top + _rows.Length * rowHeight + bottom;
+        if (_kind == "context") _fullH += (int)Math.Round(42.0 * _scale);
+        if (_fullH < (int)Math.Round(130.0 * _scale)) _fullH = (int)Math.Round(130.0 * _scale);
         Render();
     }
-
     public void SetAnim(double t)
     {
         _anim = Math.Max(0.02, Math.Min(1.0, t));
@@ -465,46 +575,99 @@ public class CostPopup : Form
         int w = _fullW;
         int fullH = _fullH;
         int h = Math.Max(2, (int)Math.Round(fullH * _anim));
+        if (Width != w || Height != h) Size = new Size(w, h);
         using (Bitmap bmp = new Bitmap(w, h))
+        using (Graphics g = Graphics.FromImage(bmp))
         {
-            using (Graphics g = Graphics.FromImage(bmp))
+            g.SmoothingMode = SmoothingMode.AntiAlias;
+            g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
+            g.Clear(Color.Transparent);
+            Color panel = DarkText ? Color.FromArgb(250, 255, 255, 255) : Color.FromArgb(245, 255, 255, 255);
+            Color borderColor = Color.FromArgb(225, 229, 234);
+            Color text = Color.FromArgb(35, 39, 45);
+            Color muted = Color.FromArgb(105, 111, 120);
+            Color faint = Color.FromArgb(224, 227, 231);
+            Color blue = Color.FromArgb(92, 137, 232);
+            Color purple = Color.FromArgb(150, 125, 238);
+            using (GraphicsPath path = Rounded(new Rectangle(0, 0, w - 1, fullH - 1), (int)Math.Round(18.0 * _scale)))
+            using (SolidBrush bg = new SolidBrush(panel))
+            using (Pen border = new Pen(borderColor, 1f))
             {
-                g.SmoothingMode = SmoothingMode.AntiAlias;
-                g.TextRenderingHint = TextRenderingHint.ClearTypeGridFit;
-                g.Clear(Color.Transparent);
+                g.FillPath(bg, path);
+                g.DrawPath(border, path);
+            }
 
-                using (GraphicsPath path = Rounded(new Rectangle(0, 0, w, fullH), fullH / 2))
-                using (SolidBrush bg = new SolidBrush(Color.FromArgb(150, 16, 19, 26)))
-                using (Pen border = new Pen(Color.FromArgb(70, 90, 102, 124)))
+            Font titleFont = new Font("Segoe UI", (float)(16.0 * _scale), FontStyle.Regular, GraphicsUnit.Pixel);
+            Font valueFont = new Font("Segoe UI", (float)(16.0 * _scale), FontStyle.Regular, GraphicsUnit.Pixel);
+            Font rowFont = new Font("Segoe UI", (float)(16.0 * _scale), FontStyle.Regular, GraphicsUnit.Pixel);
+            try
+            {
+                int pad = (int)Math.Round(24.0 * _scale);
+                int y = (int)Math.Round(18.0 * _scale);
+                using (SolidBrush tb = new SolidBrush(text))
+                using (SolidBrush vb = new SolidBrush(text))
+                using (SolidBrush mb = new SolidBrush(muted))
+                using (SolidBrush bb = new SolidBrush(blue))
+                using (SolidBrush pb = new SolidBrush(purple))
                 {
-                    g.FillPath(bg, path);
-                    g.DrawPath(border, path);
-                }
-
-                List<string> lines = new List<string>();
-                if (_rows.Length == 1) lines.Add(_title + "   ·   " + _rows[0]);
-                else
-                {
-                    lines.Add(_title);
-                    foreach (string r in _rows) lines.Add(r);
-                }
-                int y = 12;
-                bool dot = true;
-                foreach (string line in lines)
-                {
-                    if (dot)
+                    string icon = _kind == "context" ? "" : (_title == "Token 用量" ? "◉" : "◌");
+                    if (!String.IsNullOrEmpty(icon))
                     {
-                        using (SolidBrush db = new SolidBrush(cAccent)) g.FillEllipse(db, 24, y + 5, 7, 7);
-                        dot = false;
+                        g.DrawString(icon, titleFont, mb, pad, y - 1);
+                        pad += (int)Math.Round(27.0 * _scale);
                     }
-                    TextRenderer.DrawText(g, line, _fText, new Point(40, y), cText);
-                    y += TextRenderer.MeasureText(line, _fText).Height + 5;
+                    g.DrawString(_title, titleFont, tb, pad, y);
+                    if (!String.IsNullOrEmpty(_headerValue))
+                    {
+                        SizeF vs = g.MeasureString(_headerValue, valueFont);
+                        g.DrawString(_headerValue, valueFont, vb, w - (int)Math.Round(24.0 * _scale) - vs.Width, y);
+                    }
+                    int lineY = (int)Math.Round(51.0 * _scale);
+                    using (Pen line = new Pen(faint, 1f)) g.DrawLine(line, (int)Math.Round(24.0 * _scale), lineY, w - (int)Math.Round(24.0 * _scale), lineY);
+                    y = (int)Math.Round(66.0 * _scale);
+
+                    if (_kind == "context")
+                    {
+                        int barX = (int)Math.Round(24.0 * _scale);
+                        int barW = w - (int)Math.Round(48.0 * _scale);
+                        int barH = (int)Math.Round(6.0 * _scale);
+                        using (SolidBrush track = new SolidBrush(Color.FromArgb(235, 238, 241))) FillRound(g, track, new Rectangle(barX, y, barW, barH), barH / 2);
+                        int fillW = (int)Math.Round(barW * Math.Max(0.0, Math.Min(100.0, _progress)) / 100.0);
+                        if (fillW > 0) using (SolidBrush fill = new SolidBrush(blue)) FillRound(g, fill, new Rectangle(barX, y, fillW, barH), barH / 2);
+                        y += (int)Math.Round(28.0 * _scale);
+                    }
+
+                    for (int i = 0; i < _rows.Length; i++)
+                    {
+                        string row = _rows[i] ?? "";
+                        string label = row;
+                        string right = "";
+                        string[] parts = row.Split(new [] { '|' }, 2);
+                        if (parts.Length == 2) { label = parts[0]; right = parts[1]; }
+                        if (_kind == "context")
+                        {
+                            using (SolidBrush swatch = new SolidBrush(i == 0 ? Color.FromArgb(180, 178, 170) : (i == 1 ? purple : blue)))
+                                g.FillRectangle(swatch, (int)Math.Round(24.0 * _scale), y + (int)Math.Round(7.0 * _scale), (int)Math.Round(10.0 * _scale), (int)Math.Round(10.0 * _scale));
+                            pad = (int)Math.Round(46.0 * _scale);
+                        }
+                        else pad = (int)Math.Round(24.0 * _scale);
+                        g.DrawString(label, rowFont, mb, pad, y);
+                        if (!String.IsNullOrEmpty(right))
+                        {
+                            SizeF rs = g.MeasureString(right, rowFont);
+                            g.DrawString(right, rowFont, mb, w - (int)Math.Round(24.0 * _scale) - rs.Width, y);
+                        }
+                        y += (int)Math.Round(34.0 * _scale);
+                    }
                 }
+            }
+            finally
+            {
+                titleFont.Dispose(); valueFont.Dispose(); rowFont.Dispose();
             }
             Push(bmp);
         }
     }
-
     private void Push(Bitmap bmp)
     {
         IntPtr screenDc = GetDC(IntPtr.Zero);
@@ -564,7 +727,7 @@ public class SqliteLog
         if (sqlite3_open_v2(path, out db, 1, IntPtr.Zero) != 0) return null;
         try
         {
-            string sql = "SELECT thread_id, ts FROM logs WHERE thread_id IS NOT NULL AND feedback_log_body LIKE '%thread/resume%' ORDER BY id DESC LIMIT 1";
+            string sql = "SELECT thread_id, ts FROM logs WHERE id > (SELECT IFNULL(MAX(id),0)-512 FROM logs) AND thread_id IS NOT NULL AND feedback_log_body LIKE '%thread/resume%' ORDER BY id DESC LIMIT 1";
             byte[] bytes = System.Text.Encoding.UTF8.GetBytes(sql + "\0");
             IntPtr stmt;
             if (sqlite3_prepare_v2(db, bytes, bytes.Length, out stmt, IntPtr.Zero) != 0) return null;
@@ -581,6 +744,43 @@ public class SqliteLog
         }
         finally { sqlite3_close(db); }
         return null;
+    }
+
+    public class ModelCharge {
+        public string Model;
+        public long Requests;
+        public double Amount;
+    }
+
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern double sqlite3_column_double(IntPtr stmt, int column);
+    [DllImport("winsqlite3.dll", CallingConvention = CallingConvention.Cdecl)]
+    private static extern IntPtr sqlite3_column_text16(IntPtr stmt, int column);
+
+    public static ModelCharge[] SessionCharges(string path, Guid session) {
+        IntPtr db, stmt = IntPtr.Zero;
+        int opened = sqlite3_open_v2(path, out db, 1, IntPtr.Zero);
+        try {
+            if (opened != 0) throw new InvalidOperationException("CC Switch database unavailable");
+            string id = session.ToString("D");
+            string sql = "SELECT model, COUNT(*), SUM(CAST(total_cost_usd AS REAL)) " +
+                "FROM proxy_request_logs WHERE app_type='codex' AND session_id IN ('" + id + "','codex_" + id + "') " +
+                "GROUP BY model ORDER BY 3 DESC, model";
+            byte[] query = System.Text.Encoding.UTF8.GetBytes(sql + "\0");
+            if (sqlite3_prepare_v2(db, query, query.Length, out stmt, IntPtr.Zero) != 0)
+                throw new InvalidOperationException("CC Switch billing table unavailable");
+            var rows = new System.Collections.Generic.List<ModelCharge>();
+            int status;
+            while ((status = sqlite3_step(stmt)) == 100) {
+                rows.Add(new ModelCharge { Model = Marshal.PtrToStringUni(sqlite3_column_text16(stmt, 0)),
+                    Requests = sqlite3_column_int64(stmt, 1), Amount = sqlite3_column_double(stmt, 2) });
+            }
+            if (status != 101) throw new InvalidOperationException("CC Switch billing query interrupted");
+            return rows.ToArray();
+        } finally {
+            if (stmt != IntPtr.Zero) sqlite3_finalize(stmt);
+            if (db != IntPtr.Zero) sqlite3_close(db);
+        }
     }
 
     public static string ThreadModel(string path, string threadId)
@@ -611,7 +811,7 @@ public class SqliteLog
 try { Add-Type -TypeDefinition $sqlCs } catch {}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = '1.2.0'
+$script:Version = '1.4.0'
 $pidFile = Join-Path $here 'overlay.pid'
 $settingsFile = Join-Path $here 'overlay.json'
 $logFile = Join-Path $here 'overlay.log'
@@ -785,37 +985,179 @@ function Read-ModelUsage([string]$file) {
 
 function Update-CostPopup {
     if (-not $script:activeFile) { return }
-    $map = Read-ModelUsage $script:activeFile
-    $pt = Get-PriceTable
-    $cur = [string]$pt.currency
-    if (-not $cur) { $cur = '$' }
-    $total = 0.0
-    $rows = New-Object System.Collections.ArrayList
-    $vals = @($map.Values)
-    if ($vals.Count -eq 0) {
-        [void]$rows.Add('暂无用量记录')
-        $script:popup.SetContent('费用 0.0000', [string[]]$rows.ToArray(), '')
+    $title = 'CC Switch · 会话费用'
+    $db = Join-Path $env:USERPROFILE '.cc-switch\cc-switch.db'
+    $match = [regex]::Match([IO.Path]::GetFileNameWithoutExtension($script:activeFile), '[0-9a-fA-F-]{36}$')
+    $session = [Guid]::Empty
+    $rows = @('当前会话暂无费用记录')
+    if (-not [IO.File]::Exists($db)) {
+        $rows = @('未找到 CC Switch 数据库')
+    } elseif ([Guid]::TryParse($match.Value, [ref]$session)) {
+        try {
+            $charges = [SqliteLog]::SessionCharges($db, $session)
+            if ($charges.Length -gt 0) {
+                $total = ($charges | Measure-Object -Property Amount -Sum).Sum
+                $title += ('|${0:N4}' -f $total)
+                $rows = foreach ($charge in $charges) {
+                    '{0} · {1} 次|${2:N4}' -f $charge.Model, $charge.Requests, $charge.Amount
+                }
+            }
+        } catch { $rows = @('暂时无法读取 CC Switch 费用记录') }
+    }
+    $script:popup.SetContent($title, [string[]]@($rows), '')
+}
+
+function Format-Duration([double]$ms) {
+    $s = [int][Math]::Round($ms / 1000.0)
+    if ($s -lt 60) { return ('{0}秒' -f $s) }
+    return ('{0}分{1}秒' -f [Math]::Floor($s / 60), ($s % 60))
+}
+
+$script:detailKey = ''
+$script:detail = $null
+function Get-SessionDetail([string]$file) {
+    if (-not $file -or -not (Test-Path -LiteralPath $file)) { return $null }
+    $fi = Get-Item -LiteralPath $file
+    $key = $file + '|' + $fi.Length + '|' + $fi.LastWriteTimeUtc.Ticks
+    if ($script:detailKey -eq $key -and $script:detail) { return $script:detail }
+
+    $turns = 0; $steps = 0
+    $durMs = 0.0; $toolMs = 0.0
+    $ttftSum = 0.0; $ttftN = 0
+    $outTok = 0L; $inTok = 0L; $cachedTok = 0L; $totalTok = 0L
+    $lastIn = 0L; $lastCached = 0L; $lastOut = 0L
+    $window = 0
+    $sysChars = 0; $toolsChars = 0
+    $toolTypes = @('CommandExecution', 'McpToolCall', 'WebSearch', 'FileChange', 'PatchApply', 'ImageGeneration', 'ComputerUse', 'ToolCall')
+
+    try { $fs = [IO.File]::Open($file, 'Open', 'Read', 'ReadWrite') } catch { return $null }
+    $rd = New-Object System.IO.StreamReader($fs, [Text.Encoding]::UTF8)
+    try {
+        while ($null -ne ($line = $rd.ReadLine())) {
+            if ($line.Contains('"task_complete"')) {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    $turns++
+                    if ($o.payload.duration_ms) { $durMs += [double]$o.payload.duration_ms }
+                    if ($o.payload.time_to_first_token_ms -gt 0) { $ttftSum += [double]$o.payload.time_to_first_token_ms; $ttftN++ }
+                } catch {}
+            } elseif ($line.Contains('"item_completed"')) {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    $steps++
+                    $it = $o.payload.item
+                    if ($it -and ($toolTypes -contains [string]$it.type)) {
+                        $dt = [double]$o.payload.completed_at_ms - [double]$o.payload.started_at_ms
+                        if ($dt -gt 0) { $toolMs += $dt }
+                    }
+                } catch {}
+            } elseif ($line.Contains('"token_count"')) {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    $u = $o.payload.info.total_token_usage
+                    if ($u) {
+                        $inTok = [long]$u.input_tokens
+                        $cachedTok = [long]$u.cached_input_tokens
+                        $outTok = [long]$u.output_tokens
+                        $totalTok = [long]$u.total_tokens
+                    }
+                    $lu = $o.payload.info.last_token_usage
+                    if ($lu) {
+                        $lastIn = [long]$lu.input_tokens
+                        $lastCached = [long]$lu.cached_input_tokens
+                        $lastOut = [long]$lu.output_tokens
+                    }
+                    if ($o.payload.info.model_context_window -gt 0) { $window = [int]$o.payload.info.model_context_window }
+                } catch {}
+            } elseif ($line.Contains('"world_state"')) {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    if ($o.payload.state.tools) {
+                        $json = $o.payload.state.tools | ConvertTo-Json -Compress -Depth 8
+                        if ($json.Length -gt $toolsChars) { $toolsChars = $json.Length }
+                    }
+                } catch {}
+            } elseif ($line.Contains('"response_item"')) {
+                try {
+                    $o = $line | ConvertFrom-Json
+                    $role = [string]$o.payload.role
+                    if ($role -eq 'developer' -or $role -eq 'system') {
+                        $len = 0
+                        foreach ($c in $o.payload.content) { if ($c.text) { $len += ([string]$c.text).Length } }
+                        if ($len -gt $sysChars) { $sysChars = $len }
+                    }
+                } catch {}
+            }
+        }
+    } finally { $rd.Dispose() }
+
+    $modelMs = [Math]::Max(0.0, $durMs - $toolMs)
+    $tps = if ($modelMs -gt 0) { $outTok / ($modelMs / 1000.0) } else { 0.0 }
+    $ttft = if ($ttftN -gt 0) { $ttftSum / $ttftN } else { 0.0 }
+    $cachePct = if ($inTok -gt 0) { 100.0 * $cachedTok / $inTok } else { 0.0 }
+    $used = $lastIn
+    $pctCtx = if ($window -gt 0) { 100.0 * $used / $window } else { 0.0 }
+    $sysTok = [long]([Math]::Round($sysChars / 4.0))
+    $toolTok = [long]([Math]::Round($toolsChars / 4.0))
+    $msgTok = [Math]::Max(0, $used - $sysTok - $toolTok)
+
+    $script:detail = [pscustomobject]@{
+        Turns = $turns; Steps = $steps; ModelMs = $modelMs; ToolMs = $toolMs
+        TtftMs = $ttft; Tps = $tps; Output = $outTok; Input = $inTok; Cached = $cachedTok
+        Total = $totalTok; Window = $window; CachePct = $cachePct; CtxPct = $pctCtx
+        Used = $used; SysTok = $sysTok; ToolTok = $toolTok; MsgTok = $msgTok
+        LastInput = $lastIn; LastCached = $lastCached; LastOutput = $lastOut
+    }
+    $script:detailKey = $key
+    return $script:detail
+}
+
+function Show-InfoPopup([string]$seg) {
+    if ($script:popupPinned -and $script:pinnedSeg -eq $seg) {
+        Hide-CostPopup
         return
     }
-    $sorted = $vals | Sort-Object -Property @{ Expression = { [double]$_.input + [double]$_.output }; Descending = $true }
-    foreach ($u in $sorted) {
-        $total += Get-UsageCost $u (Get-PriceFor $u.model)
-    }
-    $title = ('费用 {0}{1:N4}' -f $cur, $total)
-    if ($vals.Count -eq 1) {
-        $u = $vals[0]
-        $name = [string]$u.model
-        if ($name.Length -gt 34) { $name = $name.Substring(0, 33) + '~' }
-        [void]$rows.Add(('{0}   {1} in · {2} out' -f $name, (Fmt-Tok $u.input), (Fmt-Tok $u.output)))
-    } else {
-        foreach ($u in $sorted) {
-            $cost = Get-UsageCost $u (Get-PriceFor $u.model)
-            $name = [string]$u.model
-            if ($name.Length -gt 30) { $name = $name.Substring(0, 29) + '~' }
-            [void]$rows.Add(('{0}   {1} in · {2} out   {3}{4:N4}' -f $name, (Fmt-Tok $u.input), (Fmt-Tok $u.output), $cur, $cost))
-        }
-    }
+    if (-not $script:activeFile) { return }
+    Log ('info=' + $seg)
+    $d = Get-SessionDetail $script:activeFile
+    if (-not $d) { return }
+    $title = ''
+    $rows = New-Object System.Collections.ArrayList
+    if ($seg -eq 'speed') {
+        $title = ('会话统计|{0}轮 {1}步' -f $d.Turns, $d.Steps)
+        [void]$rows.Add(('模型用时|{0}' -f (Format-Duration $d.ModelMs)))
+        [void]$rows.Add(('工具调用用时|{0}' -f (Format-Duration $d.ToolMs)))
+        [void]$rows.Add(('首 token 平均（TTFT）|{0:N1}秒' -f ($d.TtftMs / 1000.0)))
+        [void]$rows.Add(('输出速度（TPS）|{0:N0} tok/s' -f $d.Tps))
+    } elseif ($seg -eq 'cache') {
+        $title = ('Token 用量|{0:N0} tok' -f $d.Total)
+        [void]$rows.Add(('缓存命中|{0:N0}%' -f $d.CachePct))
+        [void]$rows.Add(('未缓存输入|{0:N0} tok' -f ($d.Input - $d.Cached)))
+        [void]$rows.Add(('缓存读取|{0:N0} tok' -f $d.Cached))
+        [void]$rows.Add(('输出|{0:N0} tok' -f $d.Output))
+    } elseif ($seg -eq 'ctx') {
+        $title = ('ctx|上下文已用 {0:N0}%|' -f $d.CtxPct)
+        [void]$rows.Add(('progress|{0}|~{1} / {2}' -f $d.CtxPct, (Fmt-Tok $d.Used), (Fmt-Tok $d.Window)))
+        [void]$rows.Add(('系统提示词|~{0}' -f (Fmt-Tok $d.SysTok)))
+        [void]$rows.Add(('工具定义|~{0}' -f (Fmt-Tok $d.ToolTok)))
+        [void]$rows.Add(('对话消息|~{0}' -f (Fmt-Tok $d.MsgTok)))
+    }    
+    $script:popup.DarkText = $true
     $script:popup.SetContent($title, [string[]]$rows.ToArray(), '')
+    $script:anchorX = 0
+    $x = $form.Left + $form.ClickedX
+    $scr = [System.Windows.Forms.Screen]::FromControl($form)
+    if ($x + $script:popup.Width -gt $scr.WorkingArea.Right) { $x = $scr.WorkingArea.Right - $script:popup.Width - 8 }
+    if ($x -lt $scr.WorkingArea.Left) { $x = $scr.WorkingArea.Left }
+    $script:popup.Left = $x
+    $below = $form.Bottom + 4
+    $script:popup.Top = if ($below + $script:popup.Height -le $scr.WorkingArea.Bottom) { $below } else { [Math]::Max($scr.WorkingArea.Top, $form.Top - $script:popup.Height - 4) }
+    if (-not $script:popup.Visible) { $script:popup.Show() }
+    $script:popup.SetAnim(1.0)
+    $script:popupPinned = $true
+    $script:pinnedSeg = $seg
+    Log ('info=' + $seg + ' veil=' + $form.Veil + ' dark=' + $script:popup.DarkText + ' w=' + $script:popup.Width + ' h=' + $script:popup.Height)
+    try { [void][Win32]::SetWindowPos($script:popup.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) } catch {}
 }
 
 function Show-CostPopup {
@@ -824,6 +1166,7 @@ function Show-CostPopup {
     try { Update-CostPopup } catch { Log ('cost-err ' + $_.Exception.Message); return }
     $x = $form.Left
     $y = $form.Top + $form.Height + 6
+    $script:anchorX = 0
     $script:popup.Left = $x
     $script:popup.Top = $y
     if (-not $script:popup.Visible) {
@@ -840,19 +1183,27 @@ function Show-CostPopup {
 function Hide-CostPopup {
     try {
         if ($animTimer) { $animTimer.Stop() }
+        $script:popupPinned = $false
+        $script:pinnedSeg = ''
         if ($script:popup -and $script:popup.Visible) { $script:popup.Hide() }
     } catch {}
 }
 
 $form = New-Object CodexHud
 $popup = New-Object CostPopup
+$popup.Hud = $form
+$popup.add_OutsidePress({ Hide-CostPopup })
 $script:popup = $popup
 $script:popupHover = $false
+$script:popupPinned = $false
+$script:pinnedSeg = ''
+$script:anchorX = 0
 $script:activeFile = ''
 $form.FixedPos = $settings.fixed
 $form.Veil = $settings.veil
 $form.SetScale($settings.scale)
 $popup.SetScale($settings.scale)
+$popup.DarkText = (-not $settings.veil)
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
 $script:menuOpen = $false
@@ -975,13 +1326,19 @@ function Get-ActiveThreadId {
     return $null
 }
 
+$script:sessionPaths = @{}
 function Get-SessionFile([string]$id) {
     if (-not $id -or $id -eq 'draft') { return $null }
     $dir = Join-Path $env:USERPROFILE '.codex\sessions'
     if (-not (Test-Path -LiteralPath $dir)) { return $null }
-    Get-ChildItem -LiteralPath $dir -Recurse -Filter ('*' + $id + '*.jsonl') -File -ErrorAction SilentlyContinue |
+    if ($script:sessionPaths[$id] -and [IO.File]::Exists($script:sessionPaths[$id])) {
+        return Get-Item -LiteralPath $script:sessionPaths[$id]
+    }
+    $found = Get-ChildItem -LiteralPath $dir -Recurse -Filter ('*' + $id + '*.jsonl') -File -ErrorAction SilentlyContinue |
         Sort-Object LastWriteTime -Descending |
         Select-Object -First 1
+    if ($found) { $script:sessionPaths[$id] = $found.FullName }
+    return $found
 }
 
 function Get-LatestSession {
@@ -1036,7 +1393,7 @@ function Read-Stats([string]$file, [string]$modelFallback = '') {
             if ($o.payload.info.model_context_window -gt 0) { $window = [int]$o.payload.info.model_context_window }
         } elseif ($line -like '*"turn_context"*') {
             try { $o = $line | ConvertFrom-Json } catch { continue }
-            if ($o.payload.model) { $model = [string]$o.payload.model }
+            if (-not $model -and $o.payload.model) { $model = [string]$o.payload.model }
             if ($records.Count -ge 8 -and $window -gt 0 -and $model) { break }
         }
     }
@@ -1153,8 +1510,10 @@ function Get-HeaderTitle {
         $sha = [System.Security.Cryptography.SHA1]::Create()
         $hash = [BitConverter]::ToString($sha.ComputeHash($bytes))
         $sha.Dispose()
-        if ($script:lastOcrHash -eq $hash -and $script:lastOcrText) { return $script:lastOcrText }
+        if ($script:lastOcrHash -eq $hash) { return $script:lastOcrText }
 
+        $stream = $null; $sb = $null
+        try {
         $file = Await ([Windows.Storage.StorageFile]::GetFileFromPathAsync($tmp)) ([Windows.Storage.StorageFile])
         $stream = Await ($file.OpenAsync([Windows.Storage.FileAccessMode]::Read)) ([Windows.Storage.Streams.IRandomAccessStream])
         $decoder = Await ([Windows.Graphics.Imaging.BitmapDecoder]::CreateAsync($stream)) ([Windows.Graphics.Imaging.BitmapDecoder])
@@ -1164,6 +1523,10 @@ function Get-HeaderTitle {
         $script:lastOcrText = $res.Text
         Log ('ocr=[' + $res.Text + ']')
         return $res.Text
+        } finally {
+            if ($sb -is [IDisposable]) { $sb.Dispose() }
+            if ($stream -is [IDisposable]) { $stream.Dispose() }
+        }
     } catch {
         Log ('ocr-fail: ' + $_.Exception.Message)
         return $null
@@ -1178,8 +1541,12 @@ $script:lastOcrText = $null
 $script:lastLogKey = $null
 $script:lastState = $null
 function Get-ThreadIndex {
-    if ($script:idxCache -and ((Get-Date) - $script:idxAt).TotalSeconds -lt 60) { return $script:idxCache }
     $path = Join-Path $env:USERPROFILE '.codex\session_index.jsonl'
+    $stamp = $null
+    if (Test-Path -LiteralPath $path) {
+        try { $stamp = (Get-Item -LiteralPath $path).LastWriteTimeUtc.Ticks } catch {}
+    }
+    if ($script:idxCache -and $script:idxStamp -eq $stamp) { return $script:idxCache }
     $list = @()
     if (Test-Path -LiteralPath $path) {
         try {
@@ -1195,7 +1562,7 @@ function Get-ThreadIndex {
         } catch {}
     }
     $script:idxCache = $list
-    $script:idxAt = Get-Date
+    $script:idxStamp = $stamp
     return $list
 }
 
@@ -1300,26 +1667,33 @@ function Update-Hud {
     $id = $null
     $source = ''
     if (-not $script:menuOpen) {
-        $logHit = $null
-        try { $logHit = Get-ActiveThreadIdFromLogs } catch {}
-        if ($logHit -and $logHit.age -le 120) {
-            $id = $logHit.id
-            $source = 'logs'
+        try { $id = Get-ActiveThreadIdByTitle } catch {}
+        if ($id) { $source = 'ocr' }
+        else {
+            $logHit = Get-ActiveThreadIdFromLogs
+            if ($logHit -and $logHit.age -ge 0 -and $logHit.age -le 4) {
+                $id = $logHit.id
+                $source = 'logs'
+            }
         }
     }
     if (-not $id -and -not $script:menuOpen) {
-        try { $id = Get-ActiveThreadIdByTitle } catch {}
-        if ($id) { $source = 'ocr' }
+        $latest = Get-LatestSession
+        if ($latest -and ((Get-Date) - $latest.LastWriteTime).TotalSeconds -le 90) {
+            $m = [regex]::Match($latest.Name, '([0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12})\.jsonl$')
+            if ($m.Success) { $id = $m.Groups[1].Value; $source = 'latest' }
+        }
     }
     if (-not $id -and $script:lastId) { $id = $script:lastId; $source = 'last' }
     if (-not $id) {
         try { $id = Get-ActiveThreadId } catch {}
         $source = 'state'
     }
+    if ($id -and $id -ne $script:lastId) { Hide-CostPopup }
     if ($id) { $script:lastId = $id }
     $f = $null
     if ($id -and $id -ne 'draft') { $f = Get-SessionFile $id }
-    if (-not $f) { $f = Get-LatestSession }
+    if (-not $f -and -not $id) { $f = Get-LatestSession }
     $script:activeFile = if ($f) { $f.FullName } else { '' }
 
     if (-not $f) {
@@ -1335,14 +1709,20 @@ function Update-Hud {
     $s = $null
     $dbModel = ''
     if ($id -and $id -ne 'draft') { try { $dbModel = Get-ThreadModel $id } catch {} }
-    try { $s = Read-Stats $f.FullName $dbModel } catch { $s = $null }
+    $statsKey = $f.FullName + '|' + $f.Length + '|' + $f.LastWriteTimeUtc.Ticks + '|' + $dbModel
+    if ($statsKey -eq $script:statsKey) { $s = $script:cachedStats }
+    else {
+        try { $s = Read-Stats $f.FullName $dbModel } catch { $s = $null }
+        $script:statsKey = $statsKey
+        $script:cachedStats = $s
+    }
     if ($s -and $script:lastStatsLog -ne $id) {
         Log ('model=' + $s.Model + ' total=' + $s.Total)
         $script:lastStatsLog = $id
     }
 
     if ($null -eq $s) {
-        $form.Model = 'Codex'
+        $form.Model = if ($dbModel) { $dbModel } else { 'Codex' }
         $form.Speed = '等待会话'
         $form.Tokens = ''
         $form.Cache = ''
@@ -1359,7 +1739,7 @@ function Update-Hud {
         $script:lastLogKey = $id + '|' + $f.FullName
     }
     $form.Render()
-    if ($script:popup.Visible) { try { Show-CostPopup } catch {} }
+    if ($script:popup.Visible -and -not $script:popupPinned) { try { Show-CostPopup } catch {} }
 
     if ($miFollow.Checked -and -not $miFixed.Checked) { Move-Follow }
 }
@@ -1376,7 +1756,7 @@ $miFixed.Add_Click({
     Save-Settings
 })
 $miFollow.Add_Click({ Save-Settings })
-$miVeil.Add_Click({ $form.Veil = $miVeil.Checked; $form.Render(); Save-Settings })
+$miVeil.Add_Click({ $form.Veil = $miVeil.Checked; $form.Render(); $popup.DarkText = (-not $miVeil.Checked); Hide-CostPopup; Save-Settings })
 $miStartup.Add_Click({ Set-Startup $miStartup.Checked; Save-Settings })
 $miRefresh.Add_Click({ Update-Hud })
 $miDashboard.Add_Click({
@@ -1392,7 +1772,13 @@ $miExit.Add_Click({
     Save-Settings
     $form.Close()
 })
-$form.Add_LocationChanged({ if ($miFixed.Checked) { Save-Settings } })
+$form.Add_LocationChanged({
+    if ($script:popup -and $script:popup.Visible) {
+        $px = $form.Left + [Math]::Max(0, [int]$script:anchorX)
+        try { [void][Win32]::SetWindowPos($script:popup.Handle, [IntPtr](-1), $px, $form.Top + $form.Height + 6, 0, 0, 0x0001 -bor 0x0004 -bor 0x0010) } catch {}
+    }
+    if ($miFixed.Checked) { Save-Settings }
+})
 
 $script:popupHover = $false
 $script:animStep = 0
@@ -1411,22 +1797,24 @@ $hideCostTimer.Add_Tick({
     $hideCostTimer.Stop()
     try {
         $p = [System.Windows.Forms.Cursor]::Position
+        if ($script:popupPinned) { return }
         if ($script:popupHover -or $script:popup.Bounds.Contains($p)) { return }
         Hide-CostPopup
     } catch {}
 })
-$form.add_HoverEnter({ $hideCostTimer.Stop(); Show-CostPopup })
+$form.add_HoverEnter({ $hideCostTimer.Stop(); if (-not $script:popupPinned) { Show-CostPopup } })
+$form.add_SegmentClick({ if ($form.ClickedSegment) { Show-InfoPopup $form.ClickedSegment } })
 $form.add_HoverLeave({ $hideCostTimer.Stop(); $hideCostTimer.Start() })
 $popup.Add_MouseEnter({ $script:popupHover = $true; $hideCostTimer.Stop() })
 $popup.Add_MouseLeave({ $script:popupHover = $false; $hideCostTimer.Stop(); $hideCostTimer.Start() })
-$form.Add_MouseDown({ Hide-CostPopup })
 $form.Add_VisibleChanged({ if (-not $form.Visible) { Hide-CostPopup } })
 
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 2000
+$timer.Interval = 650
 $timer.Add_Tick({
     try { Update-Hud } catch {}
     try { [void][Win32]::SetWindowPos($form.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) } catch {}
+    try { if ($script:popup -and $script:popup.Visible) { [void][Win32]::SetWindowPos($script:popup.Handle, [IntPtr](-1), 0, 0, 0, 0, 0x0001 -bor 0x0002 -bor 0x0010) } } catch {}
 })
 $timer.Start()
 
@@ -1457,3 +1845,10 @@ if ($CostTest) {
 
 $timer.Stop()
 if (Test-Path -LiteralPath $pidFile) { Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue }
+
+
+
+
+
+
+

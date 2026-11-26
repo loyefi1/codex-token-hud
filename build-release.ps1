@@ -1,7 +1,7 @@
 ﻿# Build the release ZIP (Windows PowerShell 5.1+ / PowerShell 7)
 [CmdletBinding()]
 param(
-    [string]$Version = '1.0.0'
+    [string]$Version = '1.4.0'
 )
 
 $ErrorActionPreference = 'Stop'
