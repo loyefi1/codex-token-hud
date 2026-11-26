@@ -811,7 +811,7 @@ public class SqliteLog
 try { Add-Type -TypeDefinition $sqlCs } catch {}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
-$script:Version = '1.4.0'
+$script:Version = '1.4.1'
 $pidFile = Join-Path $here 'overlay.pid'
 $settingsFile = Join-Path $here 'overlay.json'
 $logFile = Join-Path $here 'overlay.log'
@@ -831,7 +831,7 @@ if (Test-Path -LiteralPath $logFile) {
 
 Set-Content -LiteralPath $pidFile -Value $PID -Encoding ASCII
 
-$settings = @{ x = $null; y = $null; fixed = $false; follow = $false; startup = $true; veil = $true; scale = 1.0 }
+$settings = @{ x = $null; y = $null; fixed = $false; follow = $false; startup = $true; veil = $true; scale = 1.0; billing = '自动' }
 if (Test-Path -LiteralPath $settingsFile) {
     try {
         $loaded = Get-Content -LiteralPath $settingsFile -Raw -Encoding UTF8 | ConvertFrom-Json
@@ -841,6 +841,7 @@ if (Test-Path -LiteralPath $settingsFile) {
         if ($null -ne $loaded.follow) { $settings.follow = [bool]$loaded.follow }
         if ($null -ne $loaded.startup) { $settings.startup = [bool]$loaded.startup }
         if ($null -ne $loaded.veil) { $settings.veil = [bool]$loaded.veil }
+        if ($loaded.billing -in @('自动','Magpie','CC Switch')) { $settings.billing = $loaded.billing }
         if ($null -ne $loaded.scale) { $settings.scale = [double]$loaded.scale }
         if ($settings.scale -lt 0.7) { $settings.scale = 0.7 }
         if ($settings.scale -gt 1.7) { $settings.scale = 1.7 }
@@ -855,6 +856,7 @@ function Save-Settings {
             follow = [bool]$miFollow.Checked
             startup = [bool]$miStartup.Checked
             veil = [bool]$miVeil.Checked
+            billing = $settings.billing
             scale = [double]$settings.scale
         }
         $obj | ConvertTo-Json -Compress | Set-Content -LiteralPath $settingsFile -Encoding UTF8
@@ -983,6 +985,67 @@ function Read-ModelUsage([string]$file) {
     return $map
 }
 
+# Run the CLI away from the window thread. Cache aggregates, never raw requests.
+$script:magpieWorker = $null
+$script:magpieNext = [datetime]::MinValue
+$script:magpieIndex = @{}
+$script:magpieStatus = '正在读取 Magpie 用量…'
+function Update-MagpieIndex {
+    if ($script:magpieWorker) {
+        if (-not $script:magpieTask.IsCompleted) { return }
+        try {
+            $result = $script:magpieWorker.EndInvoke($script:magpieTask)
+            if ($script:magpieWorker.HadErrors -or $result.Count -ne 1) { throw 'export failed' }
+            $script:magpieIndex = $result[0]
+            $script:magpieStatus = 'Magpie 暂无该会话的记录'
+        } catch {
+            $script:magpieIndex = @{}
+            $script:magpieStatus = '无法读取 Magpie 用量'
+        } finally {
+            $script:magpieWorker.Dispose()
+            $script:magpieWorker = $null
+            $script:magpieNext = [datetime]::UtcNow.AddSeconds(30)
+        }
+    }
+    if ([datetime]::UtcNow -lt $script:magpieNext) { return }
+    $exe = Join-Path $env:LOCALAPPDATA 'Programs\magpie\magpie.com'
+    if (-not [IO.File]::Exists($exe)) {
+        $cmd = Get-Command magpie.com,magpie.exe -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+        if (-not $cmd) {
+            $script:magpieStatus = '未找到 Magpie 命令行程序'
+            $script:magpieNext = [datetime]::UtcNow.AddSeconds(30)
+            return
+        }
+        $exe = $cmd.Source
+    }
+    $script:magpieWorker = [PowerShell]::Create()
+    [void]$script:magpieWorker.AddScript({param($exe)
+        $ErrorActionPreference = 'Stop'
+        $index = @{}
+        & $exe usage --csv all | ConvertFrom-Csv | ForEach-Object {
+            $r = $_
+            if ($r.agent -ne 'codex') { return }
+            $id = [guid]::Empty
+            if (-not [guid]::TryParse(($r.session -replace '^(codex_|session-)',''), [ref]$id)) { return }
+            $key = $id.ToString()
+            if (-not $index.ContainsKey($key)) { $index[$key] = @{} }
+            $model = if ($r.served_model) { $r.served_model } elseif ($r.model) { $r.model } else { $r.requested_model }
+            if (-not $model) { $model = '未知模型' }
+            if (-not $index[$key].ContainsKey($model)) {
+                $index[$key][$model] = [pscustomobject]@{Model=$model;Requests=0;Amount=[decimal]0;Missing=0}
+            }
+            $row = $index[$key][$model]
+            $row.Requests++
+            $amount = [decimal]0
+            if ([decimal]::TryParse($r.cost_usd,[Globalization.NumberStyles]::Float,[Globalization.CultureInfo]::InvariantCulture,[ref]$amount)) { $row.Amount += $amount }
+            else { $row.Missing++ }
+        }
+        if ($LASTEXITCODE -ne 0) { throw 'Magpie export failed' }
+        return $index
+    }.ToString()).AddArgument($exe)
+    $script:magpieTask = $script:magpieWorker.BeginInvoke()
+}
+
 function Update-CostPopup {
     if (-not $script:activeFile) { return }
     $title = 'CC Switch · 会话费用'
@@ -990,12 +1053,14 @@ function Update-CostPopup {
     $match = [regex]::Match([IO.Path]::GetFileNameWithoutExtension($script:activeFile), '[0-9a-fA-F-]{36}$')
     $session = [Guid]::Empty
     $rows = @('当前会话暂无费用记录')
-    if (-not [IO.File]::Exists($db)) {
+    $hasCC = $false
+    if ($settings.billing -eq 'Magpie' -or -not [IO.File]::Exists($db)) {
         $rows = @('未找到 CC Switch 数据库')
     } elseif ([Guid]::TryParse($match.Value, [ref]$session)) {
         try {
             $charges = [SqliteLog]::SessionCharges($db, $session)
             if ($charges.Length -gt 0) {
+                $hasCC = $true
                 $total = ($charges | Measure-Object -Property Amount -Sum).Sum
                 $title += ('|${0:N4}' -f $total)
                 $rows = foreach ($charge in $charges) {
@@ -1003,6 +1068,21 @@ function Update-CostPopup {
                 }
             }
         } catch { $rows = @('暂时无法读取 CC Switch 费用记录') }
+    }
+    if ($settings.billing -ne 'CC Switch' -and -not $hasCC -and [guid]::TryParse($match.Value,[ref]$session)) {
+        Update-MagpieIndex
+        $title = 'Magpie · 会话费用'
+        $models = $script:magpieIndex[$session.ToString()]
+        if ($models) {
+            $items = @($models.Values | Sort-Object Amount -Descending)
+            $missing = ($items | Measure-Object Missing -Sum).Sum
+            if ($missing) { $title += '|部分请求未定价' }
+            else { $title += ('|${0:N4}' -f ($items | Measure-Object Amount -Sum).Sum) }
+            $rows = foreach ($item in $items) {
+                $cost = if ($item.Missing) { '部分未定价' } else { '${0:N4}' -f $item.Amount }
+                '{0} · {1} 次|{2}' -f $item.Model,$item.Requests,$cost
+            }
+        } else { $rows = @($script:magpieStatus) }
     }
     $script:popup.SetContent($title, [string[]]@($rows), '')
 }
@@ -1241,6 +1321,19 @@ foreach ($pair in $sizeChoices) {
     $miSize.DropDownItems.Add($si) | Out-Null
     $script:sizeItems += $si
 }
+$billingMenu = New-Object System.Windows.Forms.ToolStripMenuItem '费用来源'
+foreach ($label in '自动','CC Switch','Magpie') {
+    $entry = New-Object System.Windows.Forms.ToolStripMenuItem $label
+    $entry.Checked = $settings.billing -eq $label
+    $entry.Add_Click({ param($sender,$eventArgs)
+        $settings.billing = $sender.Text
+        foreach ($choice in $billingMenu.DropDownItems) { $choice.Checked = $choice.Text -eq $settings.billing }
+        Hide-CostPopup
+        Save-Settings
+    })
+    [void]$billingMenu.DropDownItems.Add($entry)
+}
+[void]$menu.Items.Add($billingMenu)
 $menu.Items.Add($miSize) | Out-Null
 $menu.Items.Add((New-Object System.Windows.Forms.ToolStripSeparator)) | Out-Null
 $menu.Items.Add($miFixed) | Out-Null

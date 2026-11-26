@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.4.1
+
+- Add per-session Magpie costs from its local CSV export and a persistent billing-source selector.
+
 ## 1.4.0
 
 - Hover to view CC Switch charges per model for the current conversation.

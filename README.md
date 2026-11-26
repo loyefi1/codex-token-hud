@@ -9,6 +9,7 @@ A tiny always-on-top token usage overlay for the **ChatGPT / Codex desktop app o
 
 ## Features
 
+- **Magpie costs** — Right-click the bar and choose 费用来源 → Magpie to see the current Codex session’s per-model USD costs from `magpie usage --csv all`. Automatic mode prefers CC Switch when it has records. The Magpie export refreshes in the background while the cost card is open.
 - **Floating status bar** — model, output speed, total tokens, cache hit rate and context usage, styled after the DSH status strip.
 - **Follows the active conversation** — reads the chat header title with Windows OCR, maps it to a Codex thread through `session_index.jsonl`, and switches the numbers when you switch conversations.
 - **Only visible when ChatGPT/Codex is in the foreground** — hides when minimized or another app is active.
